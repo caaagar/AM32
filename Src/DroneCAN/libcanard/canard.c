@@ -1,4 +1,8 @@
 /*
+ * 中文导读：libcanard协议栈实现：将应用传输拆帧/组帧，跟踪会话与序号，校验CRC，并以固定块内存池管理收发队列。保留原有第三方版权和许可。
+ */
+
+/*
  * Copyright (c) 2016-2019 UAVCAN Team
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -64,6 +68,7 @@
 /*
  * API functions
  */
+/** 中文说明：初始化libcanard实例、固定块内存池及接收/过滤回调；调用者提供整个内存池，不使用常规堆分配。 */
 void canardInit(CanardInstance* out_ins,
                 void* mem_arena,
                 size_t mem_arena_size,
@@ -101,12 +106,14 @@ void canardInit(CanardInstance* out_ins,
     initPoolAllocator(&out_ins->allocator, mem_arena, (uint16_t)pool_capacity);
 }
 
+/** 中文说明：返回初始化时保存的用户上下文指针，方便回调关联应用状态。 */
 void* canardGetUserReference(const CanardInstance* ins)
 {
     CANARD_ASSERT(ins != NULL);
     return ins->user_reference;
 }
 
+/** 中文说明：设置本地节点ID；按协议区分匿名节点与已分配地址的节点。 */
 void canardSetLocalNodeID(CanardInstance* ins, uint8_t self_node_id)
 {
     CANARD_ASSERT(ins != NULL);
@@ -123,15 +130,18 @@ void canardSetLocalNodeID(CanardInstance* ins, uint8_t self_node_id)
     }
 }
 
+/** 中文说明：读取本地节点ID，匿名节点返回广播节点标识。 */
 uint8_t canardGetLocalNodeID(const CanardInstance* ins)
 {
     return ins->node_id;
 }
 
+/** 中文说明：清除本地节点ID，使实例重新处于匿名状态。 */
 void canardForgetLocalNodeID(CanardInstance* ins) {
     ins->node_id = CANARD_BROADCAST_NODE_ID;
 }
 
+/** 中文说明：清零发送描述结构，并在启用相应特性时设置默认传输选项。 */
 void canardInitTxTransfer(CanardTxTransfer* transfer)
 {
     CANARD_ASSERT(transfer != NULL);
@@ -139,6 +149,7 @@ void canardInitTxTransfer(CanardTxTransfer* transfer)
 }
 
 
+/** 中文说明：构造广播传输描述并交给发送组帧逻辑；实际总线发送由底层驱动消费队列。 */
 int16_t canardBroadcast(CanardInstance* ins,
                         uint64_t data_type_signature,
                         uint16_t data_type_id,
@@ -179,6 +190,7 @@ int16_t canardBroadcast(CanardInstance* ins,
     return canardBroadcastObj(ins, &transfer_object);
 }
 
+/** 中文说明：校验广播传输参数，构造CAN标识符/匿名鉴别值并分帧入发送队列。 */
 int16_t canardBroadcastObj(CanardInstance* ins, CanardTxTransfer* transfer_object)
 {
     if (transfer_object->payload == NULL && transfer_object->payload_len > 0)
@@ -233,6 +245,7 @@ int16_t canardBroadcastObj(CanardInstance* ins, CanardTxTransfer* transfer_objec
   on 32 bit and 64 bit platforms, which allows for easier testing in
   simulator environments
  */
+/** 中文说明：将内存池块索引还原成缓冲块指针；用于节约内部链表指针存储。 */
 CANARD_INTERNAL CanardBufferBlock *canardBufferFromIdx(CanardPoolAllocator* allocator, canard_buffer_idx_t idx)
 {
 #if CANARD_64_BIT
@@ -246,6 +259,7 @@ CANARD_INTERNAL CanardBufferBlock *canardBufferFromIdx(CanardPoolAllocator* allo
 #endif
 }
 
+/** 中文说明：将缓冲块地址换算成内存池索引，供内部紧凑链表引用。 */
 CANARD_INTERNAL canard_buffer_idx_t canardBufferToIdx(CanardPoolAllocator* allocator, const CanardBufferBlock *buf)
 {
 #if CANARD_64_BIT
@@ -259,6 +273,7 @@ CANARD_INTERNAL canard_buffer_idx_t canardBufferToIdx(CanardPoolAllocator* alloc
 #endif
 }
 
+/** 中文说明：将池内索引转换为接收会话状态指针。 */
 CANARD_INTERNAL CanardRxState *canardRxFromIdx(CanardPoolAllocator* allocator, canard_buffer_idx_t idx)
 {
 #if CANARD_64_BIT
@@ -272,6 +287,7 @@ CANARD_INTERNAL CanardRxState *canardRxFromIdx(CanardPoolAllocator* allocator, c
 #endif
 }
 
+/** 中文说明：将接收会话状态地址转换为池内索引。 */
 CANARD_INTERNAL canard_buffer_idx_t canardRxToIdx(CanardPoolAllocator* allocator, const CanardRxState *rx)
 {
 #if CANARD_64_BIT
@@ -285,6 +301,7 @@ CANARD_INTERNAL canard_buffer_idx_t canardRxToIdx(CanardPoolAllocator* allocator
 #endif
 }
 
+/** 中文说明：计算发送传输校验：将数据类型签名与载荷纳入CRC，供多帧传输完整性核对。 */
 CANARD_INTERNAL uint16_t calculateCRC(const CanardTxTransfer* transfer_object)
 {
     uint16_t crc = 0xFFFFU;
@@ -311,6 +328,7 @@ CANARD_INTERNAL uint16_t calculateCRC(const CanardTxTransfer* transfer_object)
     return crc;
 }
 
+/** 中文说明：构造服务请求/响应描述并提交；目的节点、服务类型和transfer_id决定对应会话。 */
 int16_t canardRequestOrRespond(CanardInstance* ins,
                                uint8_t destination_node_id,
                                uint64_t data_type_signature,
@@ -352,6 +370,7 @@ int16_t canardRequestOrRespond(CanardInstance* ins,
     return canardRequestOrRespondObj(ins, destination_node_id, &transfer_object);
 }
 
+/** 中文说明：校验服务传输参数，组合服务CAN标识符并将载荷分帧排队。 */
 int16_t canardRequestOrRespondObj(CanardInstance* ins, uint8_t destination_node_id, CanardTxTransfer* transfer_object)
 {
     if (transfer_object->payload == NULL && transfer_object->payload_len > 0)
@@ -384,6 +403,7 @@ int16_t canardRequestOrRespondObj(CanardInstance* ins, uint8_t destination_node_
     return result;
 }
 
+/** 中文说明：查看最高优先级的待发送CAN帧而不删除；没有帧时返回空指针。 */
 CanardCANFrame* canardPeekTxQueue(const CanardInstance* ins)
 {
     if (ins->tx_queue == NULL)
@@ -393,6 +413,7 @@ CanardCANFrame* canardPeekTxQueue(const CanardInstance* ins)
     return &ins->tx_queue->frame;
 }
 
+/** 中文说明：移除已处理的发送队首并归还其内存块；应由调用者在处理发送结果后执行。 */
 void canardPopTxQueue(CanardInstance* ins)
 {
     CanardTxQueueItem* item = ins->tx_queue;
@@ -400,6 +421,7 @@ void canardPopTxQueue(CanardInstance* ins)
     freeBlock(&ins->allocator, item);
 }
 
+/** 中文说明：解析CAN标识符和尾字节，跟踪transfer_id/翻转位并重组多帧载荷，校验后调用应用接收回调。 */
 int16_t canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint64_t timestamp_usec)
 {
     const CanardTransferType transfer_type = extractTransferType(frame->id);
@@ -660,6 +682,7 @@ int16_t canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, ui
     return CANARD_OK;
 }
 
+/** 中文说明：按当前微秒时间清理超时接收会话及相关资源，防止丢失多帧传输长期占用内存。 */
 void canardCleanupStaleTransfers(CanardInstance* ins, uint64_t current_time_usec)
 {
     CanardRxState* prev = ins->rx_states, * state = ins->rx_states;
@@ -727,6 +750,7 @@ void canardCleanupStaleTransfers(CanardInstance* ins, uint64_t current_time_usec
 #endif
 }
 
+/** 中文说明：从接收载荷的位偏移提取指定长度标量，按有符号参数扩展；支持跨缓冲块读取。 */
 int16_t canardDecodeScalar(const CanardRxTransfer* transfer,
                            uint32_t bit_offset,
                            uint8_t bit_length,
@@ -902,6 +926,7 @@ int16_t canardDecodeScalar(const CanardRxTransfer* transfer,
     return result;
 }
 
+/** 中文说明：将标量按指定比特长度写入目标位偏移，处理字节序与非字节对齐字段。 */
 void canardEncodeScalar(void* destination,
                         uint32_t bit_offset,
                         uint8_t bit_length,
@@ -994,6 +1019,7 @@ void canardEncodeScalar(void* destination,
     copyBitArray(&storage.bytes[0], 0, bit_length, (uint8_t*) destination, bit_offset);
 }
 
+/** 中文说明：释放接收传输动态载荷并清除引用；应用若提前释放须避免后续再次使用载荷。 */
 void canardReleaseRxTransferPayload(CanardInstance* ins, CanardRxTransfer* transfer)
 {
     while (transfer->payload_middle != NULL)
@@ -1009,11 +1035,13 @@ void canardReleaseRxTransferPayload(CanardInstance* ins, CanardRxTransfer* trans
     transfer->payload_len = 0;
 }
 
+/** 中文说明：返回固定块内存池使用统计，便于观察容量与峰值占用。 */
 CanardPoolAllocatorStatistics canardGetPoolAllocatorStatistics(CanardInstance* ins)
 {
     return ins->allocator.statistics;
 }
 
+/** 中文说明：将本机32位浮点转换成协议使用的16位浮点编码，按实现处理特殊值和舍入。 */
 uint16_t canardConvertNativeFloatToFloat16(float value)
 {
     CANARD_ASSERT(sizeof(float) == CANARD_SIZEOF_FLOAT);
@@ -1058,6 +1086,7 @@ uint16_t canardConvertNativeFloatToFloat16(float value)
     return out;
 }
 
+/** 中文说明：把协议16位浮点编码展开为本机浮点值，包括零、非规格化数及特殊值。 */
 float canardConvertFloat16ToNativeFloat(uint16_t value)
 {
     CANARD_ASSERT(sizeof(float) == CANARD_SIZEOF_FLOAT);
@@ -1086,6 +1115,7 @@ float canardConvertFloat16ToNativeFloat(uint16_t value)
 /*
  * Internal (static functions)
  */
+/** 中文说明：计算循环transfer_id空间中的前向距离，用于判断重复、丢失及新传输。 */
 CANARD_INTERNAL int16_t computeTransferIDForwardDistance(uint8_t a, uint8_t b)
 {
     int16_t d = (int16_t)(a - b);
@@ -1096,6 +1126,7 @@ CANARD_INTERNAL int16_t computeTransferIDForwardDistance(uint8_t a, uint8_t b)
     return d;
 }
 
+/** 中文说明：递增传输序号并按协议最大序号回绕。 */
 CANARD_INTERNAL void incrementTransferID(uint8_t* transfer_id)
 {
     CANARD_ASSERT(transfer_id != NULL);
@@ -1107,6 +1138,7 @@ CANARD_INTERNAL void incrementTransferID(uint8_t* transfer_id)
     }
 }
 
+/** 中文说明：把CAN DLC编码转换成实际载荷字节数；CAN FD较大载荷不再与DLC数值相等。 */
 CANARD_INTERNAL uint16_t dlcToDataLength(uint16_t dlc) {
     /*
     Data Length Code      9  10  11  12  13  14  15
@@ -1130,6 +1162,7 @@ CANARD_INTERNAL uint16_t dlcToDataLength(uint16_t dlc) {
     return 64;
 }
 
+/** 中文说明：把载荷字节数转换为可容纳它的CAN DLC编码。 */
 CANARD_INTERNAL uint16_t dataLengthToDlc(uint16_t data_length) {
     if (data_length <= 8) {
         return data_length;
@@ -1149,6 +1182,7 @@ CANARD_INTERNAL uint16_t dataLengthToDlc(uint16_t data_length) {
     return 15;
 }
 
+/** 中文说明：把一次传输拆成CAN帧，附加CRC/尾字节并分配发送项；返回入队结果或内存错误。 */
 CANARD_INTERNAL int16_t enqueueTxFrames(CanardInstance* ins,
                                         uint32_t can_id,
                                         uint16_t crc,
@@ -1264,6 +1298,7 @@ CANARD_INTERNAL int16_t enqueueTxFrames(CanardInstance* ins,
 /**
  * Puts frame on on the TX queue. Higher priority placed first
  */
+/** 中文说明：按CAN仲裁优先级将新帧插入发送链表，维持队首优先发送。 */
 CANARD_INTERNAL void pushTxQueue(CanardInstance* ins, CanardTxQueueItem* item)
 {
     CANARD_ASSERT(ins != NULL);
@@ -1313,6 +1348,7 @@ CANARD_INTERNAL void pushTxQueue(CanardInstance* ins, CanardTxQueueItem* item)
 /**
  * Creates new tx queue item from allocator
  */
+/** 中文说明：从固定块内存池分配并初始化一个发送队列项；失败返回空指针。 */
 CANARD_INTERNAL CanardTxQueueItem* createTxItem(CanardPoolAllocator* allocator)
 {
     CanardTxQueueItem* item = (CanardTxQueueItem*) allocateBlock(allocator);
@@ -1327,6 +1363,7 @@ CANARD_INTERNAL CanardTxQueueItem* createTxItem(CanardPoolAllocator* allocator)
 /**
  * Returns true if priority of rhs is higher than id
  */
+/** 中文说明：比较CAN标识符对应的仲裁优先级，考虑标准/扩展帧等标志。 */
 CANARD_INTERNAL bool isPriorityHigher(uint32_t rhs, uint32_t id)
 {
     const uint32_t clean_id = id & CANARD_CAN_EXT_ID_MASK;
@@ -1370,6 +1407,7 @@ CANARD_INTERNAL bool isPriorityHigher(uint32_t rhs, uint32_t id)
 /**
  * preps the rx state for the next transfer. does not delete the state
  */
+/** 中文说明：清理当前接收状态的载荷进度，为同一会话下一次传输做好准备。 */
 CANARD_INTERNAL void prepareForNextTransfer(CanardRxState* state)
 {
     CANARD_ASSERT(state->buffer_blocks == CANARD_BUFFER_IDX_NONE);
@@ -1381,6 +1419,7 @@ CANARD_INTERNAL void prepareForNextTransfer(CanardRxState* state)
 /**
  * returns data type from id
  */
+/** 中文说明：从CAN标识符提取消息或服务数据类型编号。 */
 uint16_t extractDataType(uint32_t id)
 {
     if (extractTransferType(id) == CanardTransferTypeBroadcast)
@@ -1401,6 +1440,7 @@ uint16_t extractDataType(uint32_t id)
 /**
  * returns transfer type from id
  */
+/** 中文说明：从CAN标识符区分广播消息、服务请求和服务响应。 */
 CanardTransferType extractTransferType(uint32_t id)
 {
     const bool is_service = SERVICE_NOT_MSG_FROM_ID(id);
@@ -1426,6 +1466,7 @@ CanardTransferType extractTransferType(uint32_t id)
  * Traverses the list of CanardRxState's and returns a pointer to the CanardRxState
  * with either the Id or a new one at the end
  */
+/** 中文说明：遍历接收状态链表查找指定传输描述，按实现调整命中状态位置。 */
 CANARD_INTERNAL CanardRxState* traverseRxStates(CanardInstance* ins, uint32_t transfer_descriptor)
 {
     CanardRxState* states = ins->rx_states;
@@ -1457,6 +1498,7 @@ CANARD_INTERNAL CanardRxState* traverseRxStates(CanardInstance* ins, uint32_t tr
 /**
  * returns pointer to the rx state of transfer descriptor or null if not found
  */
+/** 中文说明：按传输描述查找已有接收会话，不创建新状态。 */
 CANARD_INTERNAL CanardRxState* findRxState(CanardInstance *ins, uint32_t transfer_descriptor)
 {
     CanardRxState *state = ins->rx_states;
@@ -1474,6 +1516,7 @@ CANARD_INTERNAL CanardRxState* findRxState(CanardInstance *ins, uint32_t transfe
 /**
  * prepends rx state to the canard instance rx_states
  */
+/** 中文说明：创建接收状态并将其插入实例的接收状态链表头部。 */
 CANARD_INTERNAL CanardRxState* prependRxState(CanardInstance* ins, uint32_t transfer_descriptor)
 {
     CanardRxState* state = createRxState(&ins->allocator, transfer_descriptor);
@@ -1488,6 +1531,7 @@ CANARD_INTERNAL CanardRxState* prependRxState(CanardInstance* ins, uint32_t tran
     return state;
 }
 
+/** 中文说明：从池中分配接收会话状态并初始化其传输描述。 */
 CANARD_INTERNAL CanardRxState* createRxState(CanardPoolAllocator* allocator, uint32_t transfer_descriptor)
 {
     CanardRxState init = {
@@ -1506,6 +1550,7 @@ CANARD_INTERNAL CanardRxState* createRxState(CanardPoolAllocator* allocator, uin
     return state;
 }
 
+/** 中文说明：归还接收状态持有的载荷缓冲块，并清理载荷引用。 */
 CANARD_INTERNAL uint64_t releaseStatePayload(CanardInstance* ins, CanardRxState* rxstate)
 {
     while (rxstate->buffer_blocks != CANARD_BUFFER_IDX_NONE)
@@ -1526,6 +1571,7 @@ CANARD_INTERNAL uint64_t releaseStatePayload(CanardInstance* ins, CanardRxState*
 /**
  * pushes data into the rx state. Fills the buffer head, then appends data to buffer blocks
  */
+/** 中文说明：把新载荷追加到接收状态的缓冲链，空间不足时从池中申请新块。 */
 CANARD_INTERNAL int16_t bufferBlockPushBytes(CanardPoolAllocator* allocator,
                                              CanardRxState* state,
                                              const uint8_t* data,
@@ -1622,6 +1668,7 @@ CANARD_INTERNAL int16_t bufferBlockPushBytes(CanardPoolAllocator* allocator,
     return 1;
 }
 
+/** 中文说明：从池中创建并初始化一个载荷缓冲块。 */
 CANARD_INTERNAL CanardBufferBlock* createBufferBlock(CanardPoolAllocator* allocator)
 {
     CanardBufferBlock* block = (CanardBufferBlock*) allocateBlock(allocator);
@@ -1636,6 +1683,7 @@ CANARD_INTERNAL CanardBufferBlock* createBufferBlock(CanardPoolAllocator* alloca
 /**
  * Bit array copy routine, originally developed by Ben Dyer for Libuavcan. Thanks Ben.
  */
+/** 中文说明：按源/目标比特偏移复制位串，处理非字节对齐的头尾。 */
 void copyBitArray(const uint8_t* src, uint32_t src_offset, uint32_t src_len,
                         uint8_t* dst, uint32_t dst_offset)
 {
@@ -1680,6 +1728,7 @@ void copyBitArray(const uint8_t* src, uint32_t src_offset, uint32_t src_len,
     }
 }
 
+/** 中文说明：从分散存储的接收载荷中读取连续比特到目标缓冲区。 */
 CANARD_INTERNAL int16_t descatterTransferPayload(const CanardRxTransfer* transfer,
                                                  uint32_t bit_offset,
                                                  uint8_t bit_length,
@@ -1783,6 +1832,7 @@ CANARD_INTERNAL int16_t descatterTransferPayload(const CanardRxTransfer* transfe
     return bit_length;
 }
 
+/** 中文说明：检测本机字节序，供协议标量转换时选择字节交换。 */
 CANARD_INTERNAL bool isBigEndian(void)
 {
 #if defined(BYTE_ORDER) && defined(BIG_ENDIAN)
@@ -1806,6 +1856,7 @@ CANARD_INTERNAL bool isBigEndian(void)
 #endif
 }
 
+/** 中文说明：原地反转指定长度数据的字节顺序。 */
 CANARD_INTERNAL void swapByteOrder(void* data, unsigned size)
 {
     CANARD_ASSERT(data != NULL);
@@ -1828,6 +1879,7 @@ CANARD_INTERNAL void swapByteOrder(void* data, unsigned size)
 /*
  * CRC functions
  */
+/** 中文说明：将一个字节加入传输CRC16累积值。 */
 CANARD_INTERNAL uint16_t crcAddByte(uint16_t crc_val, uint8_t byte)
 {
     crc_val ^= (uint16_t) ((uint16_t) (byte) << 8U);
@@ -1845,6 +1897,7 @@ CANARD_INTERNAL uint16_t crcAddByte(uint16_t crc_val, uint8_t byte)
     return crc_val;
 }
 
+/** 中文说明：按协议顺序将64位数据类型签名纳入CRC16。 */
 CANARD_INTERNAL uint16_t crcAddSignature(uint16_t crc_val, uint64_t data_type_signature)
 {
     for (uint16_t shift_val = 0; shift_val < 64; shift_val = (uint16_t)(shift_val + 8U))
@@ -1854,6 +1907,7 @@ CANARD_INTERNAL uint16_t crcAddSignature(uint16_t crc_val, uint64_t data_type_si
     return crc_val;
 }
 
+/** 中文说明：把一段字节数据逐个加入CRC16。 */
 CANARD_INTERNAL uint16_t crcAdd(uint16_t crc_val, const uint8_t* bytes, size_t len)
 {
     while (len--)
@@ -1866,6 +1920,7 @@ CANARD_INTERNAL uint16_t crcAdd(uint16_t crc_val, const uint8_t* bytes, size_t l
 /*
  *  Pool Allocator functions
  */
+/** 中文说明：将调用者提供的内存组织成固定大小空闲块链表，并初始化容量统计。 */
 CANARD_INTERNAL void initPoolAllocator(CanardPoolAllocator* allocator,
                                        void* buf,
                                        uint16_t buf_len)
@@ -1890,6 +1945,7 @@ CANARD_INTERNAL void initPoolAllocator(CanardPoolAllocator* allocator,
     allocator->semaphore = NULL;
 }
 
+/** 中文说明：从空闲链表取出一个固定块并更新使用统计；池耗尽时返回空指针。 */
 CANARD_INTERNAL void* allocateBlock(CanardPoolAllocator* allocator)
 {
 #if CANARD_ALLOCATE_SEM
@@ -1920,6 +1976,7 @@ CANARD_INTERNAL void* allocateBlock(CanardPoolAllocator* allocator)
     return result;
 }
 
+/** 中文说明：将指定块归还空闲链表并更新统计，不是向操作系统释放堆内存。 */
 CANARD_INTERNAL void freeBlock(CanardPoolAllocator* allocator, void* p)
 {
 #if CANARD_ALLOCATE_SEM

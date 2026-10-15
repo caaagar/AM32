@@ -1,4 +1,8 @@
 /*
+ * 中文导读：STM32 bxCAN寄存器布局和位定义。TxMailbox/RxMailbox表示发送邮箱和接收FIFO寄存器窗口；保留字段保证结构偏移与硬件一致。
+ */
+
+/*
  * Copyright (c) 2017 UAVCAN Team
  *
  * Distributed under the MIT License, available in the file LICENSE.

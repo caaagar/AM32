@@ -1,3 +1,9 @@
+/*
+ * 中文导读：DSDL生成协议代码：电调状态，包括电压、电流、温度、机械转速和错误计数。
+ * 编解码位宽、字段顺序、类型签名与ID共同决定兼容性。TAO表示尾数组优化；内部decode返回true表示失败。
+ * 本文件的中文注释用于阅读，运行regenerate.sh重新生成时可能被覆盖；生成了类型不代表业务层已使用该功能。
+ */
+
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -16,13 +22,13 @@ struct uavcan_equipment_esc_Status {
 #if defined(__cplusplus) && defined(DRONECAN_CXX_WRAPPERS)
     using cxx_iface = uavcan_equipment_esc_Status_cxx_iface;
 #endif
-    uint32_t error_count;
-    float voltage;
-    float current;
-    float temperature;
-    int32_t rpm;
-    uint8_t power_rating_pct;
-    uint8_t esc_index;
+    uint32_t error_count; // 错误累计计数
+    float voltage; // 电压，单位V
+    float current; // 电流，单位A
+    float temperature; // 温度，电调Status协议中使用开尔文
+    int32_t rpm; // 机械转速，单位转/分
+    uint8_t power_rating_pct; // 额定功率百分比字段
+    uint8_t esc_index; // 电调在指令数组/系统中的索引
 };
 
 #ifdef __cplusplus
@@ -40,6 +46,7 @@ bool uavcan_equipment_esc_Status_decode(const CanardRxTransfer* transfer, struct
 #if defined(CANARD_DSDLC_INTERNAL)
 static inline void _uavcan_equipment_esc_Status_encode(uint8_t* buffer, uint32_t* bit_ofs, struct uavcan_equipment_esc_Status* msg, bool tao);
 static inline bool _uavcan_equipment_esc_Status_decode(const CanardRxTransfer* transfer, uint32_t* bit_ofs, struct uavcan_equipment_esc_Status* msg, bool tao);
+/** 中文说明：将本类型结构序列化为协议位流；外层encode返回字节数，带前导下划线的内部入口推进bit_ofs，供嵌套类型复用。 */
 void _uavcan_equipment_esc_Status_encode(uint8_t* buffer, uint32_t* bit_ofs, struct uavcan_equipment_esc_Status* msg, bool tao) {
     (void)buffer;
     (void)bit_ofs;
@@ -74,6 +81,7 @@ void _uavcan_equipment_esc_Status_encode(uint8_t* buffer, uint32_t* bit_ofs, str
 /*
  decode uavcan_equipment_esc_Status, return true on failure, false on success
 */
+/** 中文说明：按DSDL字段位宽反序列化；返回true表示失败、false表示成功；内部入口推进bit_ofs，外层还核对载荷长度。 */
 bool _uavcan_equipment_esc_Status_decode(const CanardRxTransfer* transfer, uint32_t* bit_ofs, struct uavcan_equipment_esc_Status* msg, bool tao) {
     (void)transfer;
     (void)bit_ofs;

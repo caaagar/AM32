@@ -1,4 +1,8 @@
 /*
+ * 中文导读：软件在环CAN模拟：用UDP组播在主机进程间收发模拟帧，以CRC检查封包，并用文件模拟RTC备份寄存器。不会直接驱动物理CAN收发器。
+ */
+
+/*
   sys_can_SITL.c - CAN over multicast UDP for the SITL build.
 
   Wire compatible with the DroneCAN "mcast:N" URI as implemented in
@@ -51,6 +55,7 @@ static int fd_out = -1;
 // its own frames, so RX must drop them
 static struct sockaddr_in tx_addr;
 
+/** 中文说明：按CCITT多项式计算SITL网络封包CRC16，用来验证模拟CAN数据完整性。 */
 static uint16_t crc16_CCITT(const uint8_t* buf, uint32_t len)
 {
     uint16_t crc = 0xFFFF;
@@ -67,6 +72,7 @@ static uint16_t crc16_CCITT(const uint8_t* buf, uint32_t len)
     return crc;
 }
 
+/** 中文说明：初始化本平台CAN时钟、引脚、收发资源和中断；SITL实现以主机网络模拟CAN。 */
 void sys_can_init(void)
 {
     const char* name = sitl_cfg.can_uri;
@@ -238,6 +244,7 @@ void sys_can_init(void)
     fprintf(stderr, "SITL: CAN on %s (%s:%d)\n", name, address, MCAST_PORT);
 }
 
+/** 中文说明：尝试提交一帧到底层发送资源；返回正值表示接受，0表示暂时无空间，负值表示错误。 */
 int16_t sys_can_transmit(const CanardCANFrame* txf)
 {
     if (fd_out < 0) {
@@ -257,6 +264,7 @@ int16_t sys_can_transmit(const CanardCANFrame* txf)
     return 1;
 }
 
+/** 中文说明：读取一帧到底层提供的输出结构；返回正值表示有效帧，0表示当前无帧，负值表示错误。 */
 int16_t sys_can_receive(CanardCANFrame* rx_frame)
 {
     if (fd_in < 0) {
@@ -295,6 +303,7 @@ int16_t sys_can_receive(CanardCANFrame* rx_frame)
   the firmware thread suspended, like a real CAN RX interrupt
  */
 void sitl_can_poll(void);
+/** 中文说明：轮询SITL接收套接字，并通过模拟中断机制处理收到的CAN帧。 */
 void sitl_can_poll(void)
 {
     if (fd_in < 0) {
@@ -310,6 +319,7 @@ void sitl_can_poll(void)
   CAN RX "interrupt handler", called by sitl_it.c in interrupt context
  */
 void sitl_can_irq(void);
+/** 中文说明：SITL模拟CAN中断入口，接收帧并推进发送队列。 */
 void sitl_can_irq(void)
 {
     CanardCANFrame rx_frame;
@@ -321,6 +331,7 @@ void sitl_can_irq(void)
 
 // CAN statistics for the SITL --verbose output
 void sitl_can_stats(uint32_t stats[4]);
+/** 中文说明：把SITL CAN收发统计复制到调用者提供的四项数组。 */
 void sitl_can_stats(uint32_t stats[4])
 {
     stats[0] = canstats.num_rx_interrupts;
@@ -329,11 +340,13 @@ void sitl_can_stats(uint32_t stats[4])
     stats[3] = (uint32_t)canstats.rx_ecode;
 }
 
+/** 中文说明：禁用本平台CAN相关中断；不等同于关闭电机输出。 */
 void sys_can_disable_IRQ(void)
 {
     sitl_nvic_disable_irq(SITL_IRQ_CAN);
 }
 
+/** 中文说明：使能本平台CAN相关中断；与禁用入口配合保护协议栈共享状态。 */
 void sys_can_enable_IRQ(void)
 {
     sitl_nvic_enable_irq(SITL_IRQ_CAN);
@@ -343,6 +356,7 @@ void sys_can_enable_IRQ(void)
   a stable 16 byte unique ID, from --uid if given, otherwise derived from
   hostname and eeprom path so DNA node IDs stick across restarts
  */
+/** 中文说明：从平台设备标识构造16字节节点唯一ID，供节点信息与动态地址分配使用。 */
 void sys_can_getUniqueID(uint8_t id[16])
 {
     char seed[256];
@@ -369,11 +383,13 @@ void sys_can_getUniqueID(uint8_t id[16])
   execve reset chain like the battery backed domain survives a reset.
   Carries the DroneCAN firmware-update handoff to the bootloader
  */
+/** 中文说明：构造SITL备份寄存器文件路径，用于跨进程重启保存引导交接状态。 */
 static void bkup_file_path(char* path, size_t len)
 {
     snprintf(path, len, "%s.bkup", sitl_cfg.eeprom_path);
 }
 
+/** 中文说明：读取指定RTC备份槽；硬件用于保留复位前状态，SITL用文件模拟。 */
 uint32_t get_rtc_backup_register(uint8_t idx)
 {
     char path[512];
@@ -390,6 +406,7 @@ uint32_t get_rtc_backup_register(uint8_t idx)
     return v;
 }
 
+/** 中文说明：写指定RTC备份槽，用于应用程序与引导程序交换启动/升级状态；SITL写模拟文件。 */
 void set_rtc_backup_register(uint8_t idx, uint32_t value)
 {
     char path[512];
@@ -406,6 +423,7 @@ void set_rtc_backup_register(uint8_t idx, uint32_t value)
     fclose(f);
 }
 
+/** 中文说明：将编码后的端口/引脚设为指定逻辑状态，常用于控制CAN终端电阻；平台实现可能为空。 */
 void setup_portpin(uint16_t portpin, bool enable)
 {
     (void)portpin;

@@ -1,4 +1,8 @@
 /*
+ * 中文导读：STM32 bxCAN驱动公共结构与接口，提供初始化、非阻塞帧收发、过滤器和统计；位时序须匹配实际外设时钟。
+ */
+
+/*
  * Copyright (c) 2017 UAVCAN Team
  *
  * Distributed under the MIT License, available in the file LICENSE.
@@ -128,6 +132,7 @@ typedef struct
  * @retval      0               Success
  * @retval      negative        Error
  */
+/** 中文接口：用指定CAN位时序与运行模式初始化bxCAN驱动，配置邮箱/FIFO及过滤器相关状态。 */
 int16_t canardSTM32Init(const CanardSTM32CANTimings* const timings,
                         const CanardSTM32IfaceMode iface_mode);
 
@@ -140,6 +145,7 @@ int16_t canardSTM32Init(const CanardSTM32CANTimings* const timings,
  * @retval      0               No space in the buffer
  * @retval      negative        Error
  */
+/** 中文接口：选择可用发送邮箱并写入CAN帧；返回已接受、无空间或错误结果，不阻塞等待发送完毕。 */
 int16_t canardSTM32Transmit(const CanardCANFrame* const frame);
 
 /**
@@ -150,6 +156,7 @@ int16_t canardSTM32Transmit(const CanardCANFrame* const frame);
  * @retval      0               The buffer is empty
  * @retval      negative        Error
  */
+/** 中文接口：从接收FIFO读出一帧并释放FIFO项，返回接收结果供上层协议栈使用。 */
 int16_t canardSTM32Receive(CanardCANFrame* const out_frame);
 
 /**
@@ -163,12 +170,14 @@ int16_t canardSTM32Receive(CanardCANFrame* const out_frame);
  * @retval      0               Success
  * @retval      negative        Error
  */
+/** 中文接口：将标识符和掩码规则写入bxCAN硬件过滤器，决定哪些总线帧进入接收FIFO。 */
 int16_t canardSTM32ConfigureAcceptanceFilters(const CanardSTM32AcceptanceFilterConfiguration* const filter_configs,
                                               const uint8_t num_filter_configs);
 
 /**
  * Returns the running interface statistics.
  */
+/** 中文接口：返回驱动累计统计数据，供诊断CAN错误及收发状态使用。 */
 CanardSTM32Stats canardSTM32GetStats(void);
 
 /**
@@ -187,6 +196,7 @@ CanardSTM32Stats canardSTM32GetStats(void);
  * @retval negative     Solution could not be found for the provided inputs.
  */
 static inline
+/** 中文说明：根据外设时钟和目标比特率搜索合适的CAN位时序；返回计算结果或错误。 */
 int16_t canardSTM32ComputeCANTimings(const uint32_t peripheral_clock_rate,
                                      const uint32_t target_bitrate,
                                      CanardSTM32CANTimings* const out_timings)

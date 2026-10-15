@@ -1,3 +1,7 @@
+/*
+ * 中文导读：KISS串口遥测及电调信息包。多字节字段按高字节在前打包，末尾为CRC8；这里只准备数据，串口DMA发送由其他模块触发。
+ */
+
 #include "kiss_telemetry.h"
 #include "eeprom.h"
 
@@ -6,6 +10,7 @@ extern uint8_t get_crc8(uint8_t* Buf, uint8_t BufLen);
 uint8_t aTxBuffer[49] __attribute__((aligned(4)));
 uint8_t nbDataToTransmit = sizeof(aTxBuffer);
 
+/** 中文说明：打包KISS遥测：温度为摄氏度，电压/电流单位为0.01V/0.01A，容量为mAh，e_rpm参数以100电气转/分为单位；末尾写CRC8。 */
 void makeTelemPackage(int8_t temp, uint16_t voltage, uint16_t current, uint16_t consumption, uint16_t e_rpm)
 {
     kiss_telem_pkt_t* telem_pkt = (kiss_telem_pkt_t*)aTxBuffer;
@@ -31,6 +36,7 @@ void makeTelemPackage(int8_t temp, uint16_t voltage, uint16_t current, uint16_t 
     telem_pkt->crc = get_crc8((uint8_t*)telem_pkt, sizeof(kiss_telem_pkt_t) - 1);
 }
 
+/** 中文说明：将设置缓冲区前48字节复制到信息包，再附加1字节CRC8，供配置端读取电调信息。 */
 void makeInfoPacket()
 {
     for(int i = 0; i < 48; i++) {

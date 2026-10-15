@@ -1,4 +1,9 @@
 /*
+ * 中文导读：DroneCAN应用层：节点发现、参数服务、油门输入、遥测与升级交接。底层CAN驱动负责帧，libcanard负责传输组包，此文件负责电调业务。
+ * RawCommand失联保护独立于普通CAN流量：超过250ms未收到控制命令会强制滤波状态和油门归零。
+ */
+
+/*
  * DroneCAN.c - support for DroneCAN protocol for ESC control and telemetry
  */
 
@@ -137,6 +142,7 @@ static uint32_t millis32(void);
 /*
   the set of parameters to present to the user over DroneCAN
 */
+/* 参数表把界面名称映射到RAM地址、类型、默认值和范围；CURRENT_LIMIT等字段在EEPROM与界面之间另有缩放。 */
 static const struct parameter {
     char *name;
     enum VarType vtype;
@@ -211,6 +217,7 @@ static const struct parameter {
 /*
   get settings from eeprom
 */
+/** 中文说明：遍历CAN参数表并校验设置缓冲区中的字节字段，越界值回退默认值；部分参数使用与界面不同的缩放。 */
 static void load_settings(void)
 {
     /*
@@ -250,6 +257,7 @@ static void load_settings(void)
 /*
   save settings to flash
  */
+/** 中文说明：保存电调配置到Flash并发送CAN日志提示；延后保存及显式保存命令共用此入口。 */
 static void save_settings(void)
 {
     saveEEpromSettings();
@@ -267,6 +275,7 @@ static struct {
     uint32_t last_change_ms;
 } pending_save;
 
+/** 中文说明：标记配置待保存并记录最近变化时刻，让连续设置合并为一次延后Flash写入。 */
 static void mark_settings_dirty(void)
 {
     pending_save.dirty = true;
@@ -278,6 +287,7 @@ static void mark_settings_dirty(void)
 */
 static struct uavcan_protocol_NodeStatus node_status;
 
+/** 中文说明：返回当前写设置许可条件：电机未运行或原始输入为零；这是源码现有条件，并非额外硬件安全保证。 */
 static bool safe_to_write_settings(void)
 {
     return !running || newinput == 0;
@@ -286,6 +296,7 @@ static bool safe_to_write_settings(void)
 /*
   simple 16 bit random number generator
 */
+/** 中文说明：用两个静态状态生成16位伪随机数，用于动态节点ID申请的退避时间，不适合密码学用途。 */
 static uint16_t get_random16(void)
 {
     static uint32_t m_z = 1234;
@@ -301,6 +312,7 @@ static uint16_t get_random16(void)
 
   NOTE: this should be in functions.c
 */
+/** 中文说明：将16位平台计时器扩展为64位微秒时间，临界区保存并恢复中断状态；需足够频繁调用以观察回绕。 */
 static uint64_t micros64(void)
 {
     static uint64_t base_us;
@@ -329,6 +341,7 @@ static uint64_t micros64(void)
 /*
   get monotonic time in milliseconds since startup
 */
+/** 中文说明：将64位微秒时间转换成32位毫秒数；返回值会在32位范围内回绕。 */
 static uint32_t millis32(void)
 {
     return micros64() / 1000ULL;
@@ -347,6 +360,7 @@ static const uint8_t default_settings[] = {
 #ifdef MCU_SITL
 // let the SITL eeprom emulation seed a missing eeprom file with defaults
 const uint8_t* DroneCAN_default_settings(unsigned* len);
+/** 中文说明：返回SITL初始化使用的默认设置字节数组，并通过len返回长度。 */
 const uint8_t* DroneCAN_default_settings(unsigned* len)
 {
     *len = sizeof(default_settings);
@@ -359,6 +373,7 @@ static const uint8_t advance_level_v3_remap[] = {
 };  
 
 // printf to CAN LogMessage for debugging
+/** 中文说明：将格式化调试文本放入DroneCAN LogMessage，截断到协议缓冲区长度后以低优先级广播。 */
 static void can_printf(const char *fmt, ...)
 {
     struct uavcan_protocol_debug_LogMessage pkt;
@@ -385,6 +400,7 @@ static void can_printf(const char *fmt, ...)
 /*
   handle parameter GetSet request
 */
+/** 中文说明：按名称或索引处理参数读写，转换界面与EEPROM缩放并返回当前/默认/范围信息；修改仅标记延后保存。 */
 static void handle_param_GetSet(CanardInstance* ins, CanardRxTransfer* transfer)
 {
     struct uavcan_protocol_param_GetSetRequest req;
@@ -569,6 +585,7 @@ static void handle_param_GetSet(CanardInstance* ins, CanardRxTransfer* transfer)
 /*
   handle parameter executeopcode request
 */
+/** 中文说明：处理恢复默认和保存参数服务；写入前使用当前运行/油门状态判断是否允许操作，再回复结果。 */
 static void handle_param_ExecuteOpcode(CanardInstance* ins, CanardRxTransfer* transfer)
 {
     struct uavcan_protocol_param_ExecuteOpcodeRequest req;
@@ -620,6 +637,7 @@ static void handle_param_ExecuteOpcode(CanardInstance* ins, CanardRxTransfer* tr
 /*
   handle RestartNode request
 */
+/** 中文说明：接到重启服务后关闭输出、清除备份标记并复位MCU；此实现未增加额外业务层鉴权。 */
 static void handle_RestartNode(CanardInstance* ins, CanardRxTransfer* transfer)
 {
     // reboot the ESC
@@ -631,6 +649,7 @@ static void handle_RestartNode(CanardInstance* ins, CanardRxTransfer* transfer)
 /*
   handle a GetNodeInfo request
 */
+/** 中文说明：返回节点状态、固件版本、硬件唯一ID及名称，供地面站识别电调。 */
 static void handle_GetNodeInfo(CanardInstance *ins, CanardRxTransfer *transfer)
 {
     uint8_t buffer[UAVCAN_PROTOCOL_GETNODEINFO_RESPONSE_MAX_SIZE];
@@ -680,6 +699,7 @@ extern void setInput();
 /*
   process throttle input from DroneCAN
  */
+/** 中文说明：将CAN油门按解锁条件置零或滤波后写入公共输入，再调用原有输入处理链；记录未滤波值供1kHz补发。 */
 static void set_input(uint16_t input)
 {
     if (!armed && input != 0 && eepromBuffer.can.require_arming &&
@@ -707,6 +727,7 @@ static void set_input(uint16_t input)
 /*
   handle a ESC RawCommand request
 */
+/** 中文说明：解码RawCommand并按ESC_INDEX选取本电调通道，将有符号CAN指令映射到AM32输入范围，同时刷新命令时间戳。 */
 static void handle_RawCommand(CanardInstance *ins, CanardRxTransfer *transfer)
 {
     struct uavcan_equipment_esc_RawCommand cmd;
@@ -754,6 +775,7 @@ static void handle_RawCommand(CanardInstance *ins, CanardRxTransfer *transfer)
 /*
   handle ArmingStatus messages
 */
+/** 中文说明：接收飞控解锁状态；启用REQUIRE_ARMING时，锁定消息会把已有CAN控制输入设置为零。 */
 static void handle_ArmingStatus(CanardInstance *ins, CanardRxTransfer *transfer)
 {
     struct uavcan_equipment_safety_ArmingStatus cmd;
@@ -771,6 +793,7 @@ static void handle_ArmingStatus(CanardInstance *ins, CanardRxTransfer *transfer)
   handle a BeginFirmwareUpdate request from a management tool like
   DroneCAN GUI tool or MissionPlanner
  */
+/** 中文说明：检查运行条件后把升级来源和文件短路径写入RTC备份寄存器，再复位交给引导程序下载；不在本函数直接刷写固件。 */
 static void handle_begin_firmware_update(CanardInstance* ins, CanardRxTransfer* transfer)
 {
     if (!safe_to_write_settings()) {
@@ -843,6 +866,7 @@ static struct {
 /*
   handle a DNA allocation packet
 */
+/** 中文说明：处理动态节点ID分配响应：匹配本机唯一ID前缀，推进分段握手，完整匹配后设置节点号。 */
 static void handle_DNA_Allocation(CanardInstance *ins, CanardRxTransfer *transfer)
 {
     if (canardGetLocalNodeID(&canard) != CANARD_BROADCAST_NODE_ID) {
@@ -894,6 +918,7 @@ static void handle_DNA_Allocation(CanardInstance *ins, CanardRxTransfer *transfe
 /*
   ask for a dynamic node allocation
 */
+/** 中文说明：按随机退避时间广播节点ID分配请求，分段发送唯一ID，等待分配器确认。 */
 static void request_DNA()
 {
     const uint32_t now = millis32();
@@ -940,6 +965,7 @@ static void request_DNA()
 /*
   This callback is invoked by the library when a new message or request or response is received.
 */
+/** 中文说明：完整CAN传输接收回调：按服务/广播类型及数据类型分发到参数、油门、解锁、升级等处理函数。 */
 static void onTransferReceived(CanardInstance *ins, CanardRxTransfer *transfer)
 {
     // tell main loop we have had signal so we don't reset
@@ -1001,6 +1027,7 @@ static void onTransferReceived(CanardInstance *ins, CanardRxTransfer *transfer)
 
   This function must fill in the out_data_type_signature to be the signature of the message.
 */
+/** 中文说明：在接收完整载荷前筛选需要的数据类型并给出类型签名，避免为无关消息分配接收内存。 */
 static bool shouldAcceptTransfer(const CanardInstance *ins,
                                  uint64_t *out_data_type_signature,
                                  uint16_t data_type_id,
@@ -1058,6 +1085,7 @@ static bool shouldAcceptTransfer(const CanardInstance *ins,
   send the 1Hz NodeStatus message. This is what allows a node to show
   up in the DroneCAN GUI tool and in the flight controller logs
 */
+/** 中文说明：广播1Hz节点心跳；厂商状态字段携带最近命令计数，便于观察控制消息频率。 */
 static void send_NodeStatus(void)
 {
     uint8_t buffer[UAVCAN_PROTOCOL_GETNODEINFO_RESPONSE_MAX_SIZE];
@@ -1091,6 +1119,7 @@ static void send_NodeStatus(void)
 /*
   This function is called at 1 Hz rate from the main loop.
 */
+/** 中文说明：每秒清理过期传输并发送节点状态；有终端电阻控制引脚时同步其设置。 */
 static void process1HzTasks(uint64_t timestamp_usec)
 {
     /*
@@ -1111,6 +1140,7 @@ static void process1HzTasks(uint64_t timestamp_usec)
 /*
   send ESC status at TELEM_RATE Hz
 */
+/** 中文说明：发送电调状态：电压/电流转为V/A，温度转开尔文，结合磁极数换算机械转速，并报告失步次数。 */
 static void send_ESCStatus(void)
 {
     struct uavcan_equipment_esc_Status pkt;
@@ -1148,6 +1178,7 @@ static void send_ESCStatus(void)
 /*
   send FlexDebug at DEBUG_RATE Hz
 */
+/** 中文说明：打包AM32自定义调试数据，包括换相间隔、命令计数、ADC与状态位，按DEBUG_RATE广播。 */
 static void send_FlexDebug(void)
 {
     static struct {
@@ -1157,6 +1188,7 @@ static void send_FlexDebug(void)
     /*
       popupate debug1
      */
+/* 当前发送调试格式为第2版；目录里的Lua日志脚本只支持第1版，直接使用会报告版本不符。 */
     debug1.version = 2;
     debug1.commutation_interval = commutation_interval;
     debug1.auto_advance_level = auto_advance_level;
@@ -1198,6 +1230,7 @@ static void send_FlexDebug(void)
 /*
   receive one frame, only called from interrupt context
 */
+/** 中文说明：在中断上下文取尽底层接收帧，交给libcanard组包并记录接收错误。 */
 void DroneCAN_receiveFrame(void)
 {
     CanardCANFrame rx_frame = {0};
@@ -1211,6 +1244,7 @@ void DroneCAN_receiveFrame(void)
     }
 }
 
+/** 中文说明：将一帧CAN数据交给libcanard并记录错误；适合底层驱动在中断里直接传入已取出的帧。 */
 void DroneCAN_handleFrame(const CanardCANFrame *rx_frame)
 {
   canstats.num_receive++;
@@ -1224,6 +1258,7 @@ void DroneCAN_handleFrame(const CanardCANFrame *rx_frame)
 /*
   Transmits all frames from the TX queue
 */
+/** 中文说明：尝试发送协议栈队首帧；硬件无空位时保留队列等待，成功或错误时弹出本帧。 */
 void DroneCAN_processTxQueue(void)
 {
     for (const CanardCANFrame* txf = NULL; (txf = canardPeekTxQueue(&canard)) != NULL;) {
@@ -1237,6 +1272,7 @@ void DroneCAN_processTxQueue(void)
     }
 }
 
+/** 中文说明：加载CAN参数、初始化内存池及回调/硬件，并在纯CAN输入模式下关闭DShot/PWM相关中断。 */
 static void DroneCAN_Startup(void)
 {
     load_settings();
@@ -1280,6 +1316,7 @@ static void DroneCAN_Startup(void)
 
 }
 
+/** 中文说明：主循环CAN服务：节点分配、发送调度、延后保存和250ms RawCommand失联置零；失联同时清除滤波历史。 */
 void DroneCAN_update()
 {
     sys_can_disable_IRQ();
@@ -1329,6 +1366,7 @@ void DroneCAN_update()
 
     // perform a deferred settings save once the param bus has been
     // quiet long enough, and it is safe to write flash
+/* 连续设置变化安静至少500ms且运行条件允许后只写一次Flash，减少CAN处理被重复擦写阻塞。 */
     if (pending_save.dirty &&
         (millis32() - pending_save.last_change_ms) >= SETTINGS_SAVE_QUIET_MS &&
         safe_to_write_settings()) {
@@ -1336,6 +1374,7 @@ void DroneCAN_update()
         save_settings();
     }
 
+/* 控制命令250ms超时要直接清空低通状态；仅给低通输入一个零样本会留下旧油门尾巴。 */
     if (canstats.last_raw_command_us != 0 && ts - canstats.last_raw_command_us > 250000ULL) {
         /*
           we have stopped getting CAN RawCommand, zero input.
@@ -1370,6 +1409,7 @@ void DroneCAN_update()
     current.count++;
 }
 
+/** 中文说明：只判断启动以来是否曾收到RawCommand；计数非零即为真，并不等价于当前控制链路仍在线。 */
 bool DroneCAN_active(void)
 {
     return canstats.total_commands != 0;

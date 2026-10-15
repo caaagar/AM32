@@ -1,4 +1,8 @@
 /*
+ * 中文导读：CAN油门二阶低通滤波。截止频率越低，输入变化越平滑但延迟越大；失联处理需直接重置历史状态。
+ */
+
+/*
   a 2 pole filter applied to RawCommand to provide a configurable
   acceleration filter
 
@@ -24,6 +28,7 @@ static struct Filter2P filter;
 
 #define MIN(a,b) ((a)<(b)?(a):(b))
 
+/** 中文说明：按采样率和截止频率计算二阶低通系数，并将截止频率限制到采样率的40%以下。 */
 static void Filter2P_setup(float sample_freq, float cutoff_freq)
 {
     // Keep well under Nyquist limit
@@ -48,12 +53,14 @@ static void Filter2P_setup(float sample_freq, float cutoff_freq)
   single zero sample pushed through a slow filter leaves almost all of
   the previous throttle applied
  */
+/** 中文说明：直接重置滤波器历史状态到指定稳态值；失联时用于立即清除历史油门，避免缓慢衰减。 */
 void Filter2P_reset(const float value)
 {
     filter._delay_element_1 = filter._delay_element_2 =
         value * (1.0f / (1 + filter.a1 + filter.a2));
 }
 
+/** 中文说明：对CAN输入执行二阶低通；频率非正时直通，参数变化时重算系数并按当前样本初始化状态。 */
 float Filter2P_apply(const float sample, float cutoff_freq, float sample_freq)
 {
     if (cutoff_freq <= 0 || sample_freq <= 0) {
@@ -79,6 +86,7 @@ float Filter2P_apply(const float sample, float cutoff_freq, float sample_freq)
 /*
   unfortunately the maths libraries have an abort() linkage
  */
+/** 中文说明：为数学库提供链接符号；当前实现声明不可到达，不是可用于普通错误处理的停机函数。 */
 void abort(void)
 {
     __builtin_unreachable();

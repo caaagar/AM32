@@ -1,4 +1,8 @@
 /*
+ * 中文导读：STM32 bxCAN平台适配：唯一ID、CAN中断、收发接口和RTC备份寄存器。CAN实际位时序由平台时钟及初始化参数共同决定。
+ */
+
+/*
   sys_can.c - MCU specific CAN code for STM32 bxCAN
  */
 
@@ -18,6 +22,7 @@
 /*
   usleep is needed by canard_stm32.c startup code
  */
+/** 中文说明：把平台延时接口转接到微秒阻塞延时，不负责操作系统任务调度。 */
 void usleep(uint32_t usec)
 {
     delayMicros(usec);
@@ -26,6 +31,7 @@ void usleep(uint32_t usec)
 /*
   get a 16 byte unique ID for this node
 */
+/** 中文说明：从平台设备标识构造16字节节点唯一ID，供节点信息与动态地址分配使用。 */
 void sys_can_getUniqueID(uint8_t id[16])
 {
     const uint8_t *uidbase = (const uint8_t *)UID_BASE;
@@ -39,6 +45,7 @@ void sys_can_getUniqueID(uint8_t id[16])
 /*
   canned when a mailbox has a pending incoming frame
  */
+/** 中文说明：处理指定发送邮箱的完成/失败结果，并更新发送统计。 */
 static void handleTxMailboxInterrupt(uint8_t mbox, bool txok)
 {
     DroneCAN_processTxQueue();
@@ -47,6 +54,7 @@ static void handleTxMailboxInterrupt(uint8_t mbox, bool txok)
 /*
   check for error state
  */
+/** 中文说明：读取并清除CAN错误标志，更新中断侧错误统计，供遥测诊断使用。 */
 static void pollErrorFlagsFromISR()
 {
     const uint8_t lec = (uint8_t)((BXCAN->ESR & CANARD_STM32_CAN_ESR_LEC_MASK) >> CANARD_STM32_CAN_ESR_LEC_SHIFT);
@@ -59,6 +67,7 @@ static void pollErrorFlagsFromISR()
 /*
   handle all TX interrupts
  */
+/** 中文说明：检查发送邮箱中断标志并处理已完成邮箱，释放后继续发送队列。 */
 static void handleTxInterrupt(void)
 {
     canstats.num_tx_interrupts++;
@@ -86,6 +95,7 @@ static void handleTxInterrupt(void)
 /*
   handle all RX interrupts
  */
+/** 中文说明：处理指定接收FIFO的待收帧和状态；不同平台实现分别使用寄存器或消息RAM读取数据。 */
 static void handleRxInterrupt(uint8_t fifo_index)
 {
     canstats.num_rx_interrupts++;
@@ -110,16 +120,19 @@ static void handleRxInterrupt(uint8_t fifo_index)
 /*
   interrupt handlers for CAN1
 */
+/** 中文说明：CAN接收FIFO0中断入口，转交本平台接收处理。 */
 void CAN1_RX0_IRQHandler(void)
 {
     handleRxInterrupt(0);
 }
 
+/** 中文说明：CAN接收FIFO1中断入口，转交本平台接收处理。 */
 void CAN1_RX1_IRQHandler(void)
 {
     handleRxInterrupt(1);
 }
 
+/** 中文说明：CAN发送中断入口，处理完成状态并尝试继续发送协议队列。 */
 void CAN1_TX_IRQHandler(void)
 {
     handleTxInterrupt();
@@ -129,6 +142,7 @@ void CAN1_TX_IRQHandler(void)
   try to transmit a frame.
   return 1 for success, 0 for no space, -ve for failure
  */
+/** 中文说明：尝试提交一帧到底层发送资源；返回正值表示接受，0表示暂时无空间，负值表示错误。 */
 int16_t sys_can_transmit(const CanardCANFrame* txf)
 {
     return canardSTM32Transmit(txf);
@@ -138,6 +152,7 @@ int16_t sys_can_transmit(const CanardCANFrame* txf)
   check for an incoming frame
   return 1 on new frame, 0 for no frame, -ve for erro
  */
+/** 中文说明：读取一帧到底层提供的输出结构；返回正值表示有效帧，0表示当前无帧，负值表示错误。 */
 int16_t sys_can_receive(CanardCANFrame *rx_frame)
 {
     return canardSTM32Receive(rx_frame);
@@ -146,6 +161,7 @@ int16_t sys_can_receive(CanardCANFrame *rx_frame)
 /*
   disable CAN IRQs
  */
+/** 中文说明：禁用本平台CAN相关中断；不等同于关闭电机输出。 */
 void sys_can_disable_IRQ(void)
 {
     NVIC_DisableIRQ(CAN1_RX0_IRQn);
@@ -156,6 +172,7 @@ void sys_can_disable_IRQ(void)
 /*
   enable CAN IRQs
  */
+/** 中文说明：使能本平台CAN相关中断；与禁用入口配合保护协议栈共享状态。 */
 void sys_can_enable_IRQ(void)
 {
     NVIC_EnableIRQ(CAN1_RX0_IRQn);
@@ -171,6 +188,7 @@ void sys_can_enable_IRQ(void)
 /*
   initialise CAN hardware
  */
+/** 中文说明：初始化本平台CAN时钟、引脚、收发资源和中断；SITL实现以主机网络模拟CAN。 */
 void sys_can_init(void)
 {
     /*
@@ -227,12 +245,14 @@ void sys_can_init(void)
     BXCAN->IER = CANARD_STM32_CAN_IER_FMPIE0 | CANARD_STM32_CAN_IER_FMPIE1 | CANARD_STM32_CAN_IER_TMEIE;
 }
 
+/** 中文说明：读取指定RTC备份槽；硬件用于保留复位前状态，SITL用文件模拟。 */
 uint32_t get_rtc_backup_register(uint8_t idx)
 {
     const volatile uint32_t *bkp = &RTC->BKP0R;
     return bkp[idx];
 }
 
+/** 中文说明：写指定RTC备份槽，用于应用程序与引导程序交换启动/升级状态；SITL写模拟文件。 */
 void set_rtc_backup_register(uint8_t idx, uint32_t value)
 {
     volatile uint32_t *bkp = &RTC->BKP0R;
@@ -242,6 +262,7 @@ void set_rtc_backup_register(uint8_t idx, uint32_t value)
 /*
   setup a static port/pin
  */
+/** 中文说明：将编码后的端口/引脚设为指定逻辑状态，常用于控制CAN终端电阻；平台实现可能为空。 */
 void setup_portpin(uint16_t portpin, bool enable)
 {
     const uint8_t port = portpin >> 8;

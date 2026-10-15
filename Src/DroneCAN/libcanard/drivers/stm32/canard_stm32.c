@@ -1,4 +1,8 @@
 /*
+ * 中文导读：libcanard的STM32 bxCAN底层驱动：CAN ID寄存器转换、发送邮箱仲裁、接收FIFO和硬件过滤。发送入邮箱不代表总线已成功发送。
+ */
+
+/*
  * Copyright (c) 2017 UAVCAN Team
  *
  * Distributed under the MIT License, available in the file LICENSE.
@@ -25,6 +29,7 @@ static CanardSTM32Stats g_stats;
 static bool g_abort_tx_on_error = false;
 
 
+/** 中文说明：比较两个CAN帧的仲裁优先级，供发送邮箱选择使用。 */
 static bool isFramePriorityHigher(uint32_t a, uint32_t b)
 {
     const uint32_t clean_a = a & CANARD_CAN_EXT_ID_MASK;
@@ -66,6 +71,7 @@ static bool isFramePriorityHigher(uint32_t a, uint32_t b)
 }
 
 /// Converts libcanard ID value into the bxCAN TX ID register format.
+/** 中文说明：把libcanard帧ID及扩展/远程标志转换成bxCAN寄存器格式。 */
 static uint32_t convertFrameIDCanardToRegister(const uint32_t id)
 {
     uint32_t out = 0;
@@ -88,6 +94,7 @@ static uint32_t convertFrameIDCanardToRegister(const uint32_t id)
 }
 
 /// Converts bxCAN TX/RX (sic! both RX/TX are supported) ID register value into the libcanard ID format.
+/** 中文说明：将bxCAN寄存器中的ID和帧标志转换成libcanard格式。 */
 static uint32_t convertFrameIDRegisterToCanard(const uint32_t id)
 {
 #if (CANARD_STM32_CAN_TIR_RTR != CANARD_STM32_CAN_RIR_RTR) ||\
@@ -115,6 +122,7 @@ static uint32_t convertFrameIDRegisterToCanard(const uint32_t id)
 }
 
 
+/** 中文说明：有限轮询等待bxCAN初始化确认位达到目标状态，返回是否成功。 */
 static bool waitMSRINAKBitStateChange(volatile const CanardSTM32CANType* const bxcan, const bool target_state)
 {
     /**
@@ -143,6 +151,7 @@ static bool waitMSRINAKBitStateChange(volatile const CanardSTM32CANType* const b
 }
 
 
+/** 中文说明：读取bxCAN错误状态并更新驱动统计，处理相应错误恢复逻辑。 */
 static void processErrorStatus(void)
 {
     /*
@@ -165,6 +174,7 @@ static void processErrorStatus(void)
 }
 
 
+/** 中文说明：用指定CAN位时序与运行模式初始化bxCAN驱动，配置邮箱/FIFO及过滤器相关状态。 */
 int16_t canardSTM32Init(const CanardSTM32CANTimings* const timings,
                         const CanardSTM32IfaceMode iface_mode)
 {
@@ -278,6 +288,7 @@ int16_t canardSTM32Init(const CanardSTM32CANTimings* const timings,
 }
 
 
+/** 中文说明：选择可用发送邮箱并写入CAN帧；返回已接受、无空间或错误结果，不阻塞等待发送完毕。 */
 int16_t canardSTM32Transmit(const CanardCANFrame* const frame)
 {
     if (frame == NULL)
@@ -384,6 +395,7 @@ int16_t canardSTM32Transmit(const CanardCANFrame* const frame)
 }
 
 
+/** 中文说明：从接收FIFO读出一帧并释放FIFO项，返回接收结果供上层协议栈使用。 */
 int16_t canardSTM32Receive(CanardCANFrame* const out_frame)
 {
     if (out_frame == NULL)
@@ -446,6 +458,7 @@ int16_t canardSTM32Receive(CanardCANFrame* const out_frame)
 }
 
 
+/** 中文说明：将标识符和掩码规则写入bxCAN硬件过滤器，决定哪些总线帧进入接收FIFO。 */
 int16_t canardSTM32ConfigureAcceptanceFilters(const CanardSTM32AcceptanceFilterConfiguration* const filter_configs,
                                               const uint8_t num_filter_configs)
 {
@@ -562,6 +575,7 @@ int16_t canardSTM32ConfigureAcceptanceFilters(const CanardSTM32AcceptanceFilterC
 }
 
 
+/** 中文说明：返回驱动累计统计数据，供诊断CAN错误及收发状态使用。 */
 CanardSTM32Stats canardSTM32GetStats(void)
 {
     return g_stats;
