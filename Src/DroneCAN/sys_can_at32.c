@@ -1,4 +1,8 @@
 /*
+ * 中文导读：Artery AT32平台CAN适配：配置引脚/外设，桥接CAN中断和libcanard队列，并实现唯一ID与备份寄存器访问。
+ */
+
+/*
   sys_can.c - MCU specific CAN code for AT32 bxCAN
  */
 
@@ -19,6 +23,7 @@
 /*
   usleep is needed by canard_stm32.c startup code
  */
+/** 中文说明：把平台延时接口转接到微秒阻塞延时，不负责操作系统任务调度。 */
 void usleep(uint32_t usec)
 {
     delayMicros(usec);
@@ -27,6 +32,7 @@ void usleep(uint32_t usec)
 /*
   get a 16 byte unique ID for this node
 */
+/** 中文说明：从平台设备标识构造16字节节点唯一ID，供节点信息与动态地址分配使用。 */
 void sys_can_getUniqueID(uint8_t id[16])
 {
     const uint8_t *uidbase = (const uint8_t *)0x1FFFF7E8; // 96 bit UID
@@ -39,6 +45,7 @@ void sys_can_getUniqueID(uint8_t id[16])
   *  @param  none
   *  @retval none
   */
+/** 中文说明：配置CAN收发引脚复用及相关GPIO电气模式。 */
 static void can_gpio_config(void)
 {
     gpio_init_type gpio_init_struct;
@@ -67,6 +74,7 @@ static void can_gpio_config(void)
 /*
   initialise CAN hardware
  */
+/** 中文说明：初始化本平台CAN时钟、引脚、收发资源和中断；SITL实现以主机网络模拟CAN。 */
 void sys_can_init(void)
 {
     can_gpio_config();
@@ -127,6 +135,7 @@ void sys_can_init(void)
     can_interrupt_enable(CAN1, CAN_EOIEN_INT, TRUE);
 }
 
+/** 中文说明：使能本平台CAN相关中断；与禁用入口配合保护协议栈共享状态。 */
 void sys_can_enable_IRQ(void)
 {
     NVIC_EnableIRQ(CAN1_SE_IRQn);
@@ -135,6 +144,7 @@ void sys_can_enable_IRQ(void)
     NVIC_EnableIRQ(CAN1_TX_IRQn);
 }
 
+/** 中文说明：禁用本平台CAN相关中断；不等同于关闭电机输出。 */
 void sys_can_disable_IRQ(void)
 {
     NVIC_DisableIRQ(CAN1_SE_IRQn);
@@ -147,6 +157,7 @@ void sys_can_disable_IRQ(void)
   try to transmit a frame.
   return 1 for success, 0 for no space, -ve for error
  */
+/** 中文说明：尝试提交一帧到底层发送资源；返回正值表示接受，0表示暂时无空间，负值表示错误。 */
 int16_t sys_can_transmit(const CanardCANFrame* txf)
 {
     can_tx_message_type tx_message_struct;
@@ -173,6 +184,7 @@ int16_t sys_can_transmit(const CanardCANFrame* txf)
   check for an incoming frame
   return 1 for success, 0 for no frame, -ve for error
  */
+/** 中文说明：读取一帧到底层提供的输出结构；返回正值表示有效帧，0表示当前无帧，负值表示错误。 */
 int16_t sys_can_receive(CanardCANFrame *rx_frame)
 {
     can_rx_message_type frm;
@@ -204,16 +216,19 @@ int16_t sys_can_receive(CanardCANFrame *rx_frame)
   *  @param  none
   *  @retval none
   */
+/** 中文说明：CAN接收FIFO0中断入口，转交本平台接收处理。 */
 void CAN1_RX0_IRQHandler(void)
 {
     DroneCAN_receiveFrame();
 }
 
+/** 中文说明：CAN接收FIFO1中断入口，转交本平台接收处理。 */
 void CAN1_RX1_IRQHandler(void)
 {
     DroneCAN_receiveFrame();
 }
 
+/** 中文说明：CAN发送中断入口，处理完成状态并尝试继续发送协议队列。 */
 void CAN1_TX_IRQHandler(void)
 {
     CAN1->tsts = CAN_TSTS_TM0TCF_VAL | CAN_TSTS_TM1TCF_VAL | CAN_TSTS_TM2TCF_VAL;
@@ -225,6 +240,7 @@ void CAN1_TX_IRQHandler(void)
   *  @param  none
   *  @retval none
   */
+/** 中文说明：CAN状态/错误中断入口，处理错误标志及相关统计。 */
 void CAN1_SE_IRQHandler(void)
 {
   __IO uint32_t err_index = 0;
@@ -243,11 +259,13 @@ void CAN1_SE_IRQHandler(void)
   }
 }
 
+/** 中文说明：读取指定RTC备份槽；硬件用于保留复位前状态，SITL用文件模拟。 */
 uint32_t get_rtc_backup_register(uint8_t idx)
 {
     return ertc_bpr_data_read(idx);
 }
 
+/** 中文说明：写指定RTC备份槽，用于应用程序与引导程序交换启动/升级状态；SITL写模拟文件。 */
 void set_rtc_backup_register(uint8_t idx, uint32_t value)
 {
     ertc_bpr_data_write(idx, value);
@@ -256,6 +274,7 @@ void set_rtc_backup_register(uint8_t idx, uint32_t value)
 /*
   setup a static port/pin
  */
+/** 中文说明：将编码后的端口/引脚设为指定逻辑状态，常用于控制CAN终端电阻；平台实现可能为空。 */
 void setup_portpin(uint16_t portpin, bool enable)
 {
     const uint8_t port = portpin >> 8;

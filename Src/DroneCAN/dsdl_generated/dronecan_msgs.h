@@ -1,3 +1,7 @@
+/*
+ * 中文导读：集中包含本项目生成的DroneCAN消息头文件。这里只提供类型可见性，是否接收/发送某消息由应用回调决定。
+ */
+
 #pragma once
 #include "dronecan.protocol.FlexDebug.h"
 #include "uavcan.equipment.esc.RawCommand.h"

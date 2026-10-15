@@ -1,4 +1,8 @@
 /*
+ * 中文导读：STM32G431 FDCAN外设适配。消息RAM、FIFO和中断直接使用寄存器；外设支持CAN FD并不表示此实现的每条收发路径都支持64字节载荷。
+ */
+
+/*
   sys_can_stm32_CANFD.c - MCU specific CAN FD code for STM32 FDCAN
 
   based on ArduPilot CANFDIface.cpp driver
@@ -62,6 +66,7 @@ static uint32_t MessageRam_TxFIFOQSA;
 /*
   setup message RAM for FDCAN1 on STM32G4
 */
+/** 中文说明：按预定义偏移配置FDCAN消息RAM，划分标准/扩展过滤器与收发FIFO区域。 */
 static void setupMessageRam(void)
 {
   // For FDCAN1, self_index = 0, so base = SRAMCAN_BASE + 0
@@ -84,6 +89,7 @@ static void setupMessageRam(void)
 /*
   send a CAN frame
 */
+/** 中文说明：尝试将一帧写入FDCAN发送FIFO，并设置标识符、长度和发送请求。 */
 static bool can_send(const CanardCANFrame *frame)
 {
   // Check if Tx FIFO is full
@@ -124,6 +130,7 @@ static bool can_send(const CanardCANFrame *frame)
   return true;
 }
 
+/** 中文说明：处理指定接收FIFO的待收帧和状态；不同平台实现分别使用寄存器或消息RAM读取数据。 */
 static void handleRxInterrupt(uint8_t fifo_index)
 {
   volatile uint32_t *fifo_status_reg = (fifo_index == 0) ? &FDCAN1->RXF0S : &FDCAN1->RXF1S;
@@ -176,11 +183,13 @@ static void handleRxInterrupt(uint8_t fifo_index)
   DroneCAN_handleFrame(&frame);
 }
 
+/** 中文说明：发送完成后触发协议栈继续处理待发送队列。 */
 static void handleTxCompleteInterrupt(void)
 {
   // Nothing to do in simple bootloader mode
 }
 
+/** 中文说明：读取并清除CAN错误标志，更新中断侧错误统计，供遥测诊断使用。 */
 static void pollErrorFlagsFromISR(void)
 {
   // Simple error handling
@@ -191,6 +200,7 @@ static void pollErrorFlagsFromISR(void)
 /*
   get a 16 byte unique ID for this node
 */
+/** 中文说明：从平台设备标识构造16字节节点唯一ID，供节点信息与动态地址分配使用。 */
 void sys_can_getUniqueID(uint8_t id[16])
 {
   // Use CMSIS UID_BASE definition
@@ -205,6 +215,7 @@ void sys_can_getUniqueID(uint8_t id[16])
 /*
   interrupt handlers for FDCAN1
 */
+/** 中文说明：FDCAN中断线0入口，按中断标志分发接收/发送及错误事件。 */
 void FDCAN1_IT0_IRQHandler(void)
 {
   // Rx FIFO interrupts
@@ -221,6 +232,7 @@ void FDCAN1_IT0_IRQHandler(void)
   pollErrorFlagsFromISR();
 }
 
+/** 中文说明：FDCAN中断线1入口，按已使能标志处理外设事件。 */
 void FDCAN1_IT1_IRQHandler(void)
 {
   // Tx complete interrupt
@@ -243,6 +255,7 @@ void FDCAN1_IT1_IRQHandler(void)
   try to transmit a frame.
   return 1 for success, 0 for no space, -ve for failure
  */
+/** 中文说明：尝试提交一帧到底层发送资源；返回正值表示接受，0表示暂时无空间，负值表示错误。 */
 int16_t sys_can_transmit(const CanardCANFrame* txf)
 {
   return can_send(txf) ? 1 : 0;
@@ -252,6 +265,7 @@ int16_t sys_can_transmit(const CanardCANFrame* txf)
   check for an incoming frame
   return 1 on new frame, 0 for no frame, -ve for error
  */
+/** 中文说明：读取一帧到底层提供的输出结构；返回正值表示有效帧，0表示当前无帧，负值表示错误。 */
 int16_t sys_can_receive(CanardCANFrame *rx_frame)
 {
   // not used on STM32 with interrupt-driven receive
@@ -261,6 +275,7 @@ int16_t sys_can_receive(CanardCANFrame *rx_frame)
 /*
   disable CAN IRQs
  */
+/** 中文说明：禁用本平台CAN相关中断；不等同于关闭电机输出。 */
 void sys_can_disable_IRQ(void)
 {
   NVIC_DisableIRQ(FDCAN1_IT0_IRQn);
@@ -270,6 +285,7 @@ void sys_can_disable_IRQ(void)
 /*
   enable CAN IRQs
  */
+/** 中文说明：使能本平台CAN相关中断；与禁用入口配合保护协议栈共享状态。 */
 void sys_can_enable_IRQ(void)
 {
   NVIC_EnableIRQ(FDCAN1_IT0_IRQn);
@@ -279,6 +295,7 @@ void sys_can_enable_IRQ(void)
 /*
   wait for register bit to change state
 */
+/** 中文说明：带有限轮询次数等待寄存器指定位达到目标状态；返回是否成功，避免无期限卡在初始化。 */
 static bool waitForBitState(volatile uint32_t *reg, uint32_t mask, bool target_state)
 {
   while (true) {
@@ -295,6 +312,7 @@ static bool waitForBitState(volatile uint32_t *reg, uint32_t mask, bool target_s
  */
 #pragma GCC optimize("Os")
 
+/** 中文说明：配置FDCAN初始化/配置模式、位时序和消息RAM，再切换到正常收发状态。 */
 static void can_init(void)
 {
   // Enable FDCAN clock
@@ -381,6 +399,7 @@ static void can_init(void)
 /*
   initialise CAN hardware
  */
+/** 中文说明：初始化本平台CAN时钟、引脚、收发资源和中断；SITL实现以主机网络模拟CAN。 */
 void sys_can_init(void)
 {
   // Setup CAN RX and TX pins
@@ -405,12 +424,14 @@ void sys_can_init(void)
   NVIC_EnableIRQ(FDCAN1_IT1_IRQn);
 }
 
+/** 中文说明：读取指定RTC备份槽；硬件用于保留复位前状态，SITL用文件模拟。 */
 uint32_t get_rtc_backup_register(uint8_t idx)
 {
   const volatile uint32_t *bkp = &TAMP->BKP0R;
   return bkp[idx];
 }
 
+/** 中文说明：写指定RTC备份槽，用于应用程序与引导程序交换启动/升级状态；SITL写模拟文件。 */
 void set_rtc_backup_register(uint8_t idx, uint32_t value)
 {
   volatile uint32_t *bkp = &TAMP->BKP0R;

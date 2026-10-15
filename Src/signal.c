@@ -1,4 +1,8 @@
 /*
+ * 中文导读：输入协议自动识别与DMA完成处理。舵机PWM按高电平脉宽转换，DShot按边沿时序识别；零油门计数和端点校准也在这里维护。
+ */
+
+/*
  * IO.c
  *
  *  Created on: Sep. 26, 2020
@@ -31,6 +35,7 @@ uint32_t average_packet_length;
 uint16_t dshot_frametime_high = 50000;
 uint16_t dshot_frametime_low = 0;
 
+/** 中文说明：从DMA边沿间隔中寻找有效脉冲，并将计数243到1200映射为内部0到2000输入。 */
 void computeMSInput()
 {
 
@@ -46,10 +51,12 @@ void computeMSInput()
     }
 }
 
+/** 中文说明：解码舵机PWM脉宽：处理高低端点校准、双向中点映射及每次输入变化限幅；有效脉宽须在800到2200之间。 */
 void computeServoInput()
 {
     if (((dma_buffer[1] - dma_buffer[0]) > 800) && ((dma_buffer[1] - dma_buffer[0]) < 2200)) {
 				signaltimeout = 0;
+/* 端点校准先稳定采集高油门，再采集低油门，给两端保留25微秒裕量并保存设置。 */
         if (calibration_required) {
             if (!high_calibration_set) {
                 if (high_calibration_counts == 0) {
@@ -106,6 +113,7 @@ void computeServoInput()
         zero_input_count = 0; // reset if out of range
     }
 
+/* 限制每次PWM输入更新的变化幅度；此层限制输入值，主控制环仍可能另外限制输出占空比变化。 */
     if (servorawinput - newinput > max_servo_deviation) {
         newinput += max_servo_deviation;
     } else if (newinput - servorawinput > max_servo_deviation) {
@@ -115,6 +123,7 @@ void computeServoInput()
     }
 }
 
+/** 中文说明：输入DMA完成后的分发入口：处理协议检测、DShot收发切换、PWM解码及解锁前的零油门计数。 */
 void transfercomplete()
 {
 #ifndef MCU_F031   // f031 does not use software EXTI event to process dshot
@@ -130,6 +139,7 @@ void transfercomplete()
         }
     }
 #endif
+/* 未识别协议时先检测再重新启动DMA接收，不直接把未识别的脉冲用于驱动。 */
     if (inputSet == 0) {
         detectInput();
         receiveDshotDma();
@@ -172,6 +182,7 @@ void transfercomplete()
                     dshot_frametime_low = (average_packet_length >> 3) - (average_packet_length >> 7);
                 }
             }
+/* 解锁准备要求处理后的输入保持零，校准期间不累计正常零油门确认。 */
             if (adjusted_input == 0 && calibration_required == 0) { // note this in input..not newinput so it
                                                                     // will be adjusted be main loop
                 zero_input_count++;
@@ -198,6 +209,7 @@ void transfercomplete()
     }
 }
 
+/** 中文说明：依据最短边沿间隔和平均脉冲长度选择DShot采集/回传定时器分频与缓冲区填充；阈值是计数值。 */
 void checkDshot()
 {
     if ((smallestnumber >= 1) && (smallestnumber < 4) && (average_signal_pulse < 60)) {
@@ -226,6 +238,7 @@ void checkDshot()
         inputSet = 1;
     }
 }
+/** 中文说明：当最短间隔符合PWM范围时启用舵机输入，并把采集定时器设置为微秒计数。 */
 void checkServo()
 {
     if (smallestnumber > 200 && smallestnumber < 20000) {
@@ -236,6 +249,7 @@ void checkServo()
     }
 }
 
+/** 中文说明：统计DMA采样中的正边沿间隔，更新最短/平均间隔，再尝试识别DShot或舵机PWM协议。 */
 void detectInput()
 {
     smallestnumber = 20000;

@@ -1,3 +1,5 @@
+-- 中文导读：在ArduPilot脚本环境读取指定节点的AM32 FlexDebug并写入飞控日志。
+-- ESC_BASE为首节点号，循环读取四个节点；当前脚本只接受调试格式version=1，固件若发version=2会提示版本不符。
 --[[
    ArduPilot lua script to log debug messages from AM32 DroneCAN
    ESCs on the flight controller
@@ -15,6 +17,7 @@ local last_tstamp = {}
 local ts_zero = uint32_t(0)
 local reported_version_error = false
 
+-- 仅处理比上次时间戳更新的调试帧，避免重复记录；解包格式必须与固件发送布局一致。
 function log_AM32()
    for i = 0, 3 do
       local last_ts = last_tstamp[i] or ts_zero
@@ -38,6 +41,7 @@ function log_AM32()
    end
 end
 
+-- ArduPilot调度回调，返回自身及5毫秒后再次调用的间隔。
 function update()
    log_AM32()
    return update, 5

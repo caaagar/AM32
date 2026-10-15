@@ -1,3 +1,9 @@
+/*
+ * 中文导读：DSDL生成协议代码：远程文件删除服务的协议定义。此文件对应服务响应。
+ * 编解码位宽、字段顺序、类型签名与ID共同决定兼容性。TAO表示尾数组优化；内部decode返回true表示失败。
+ * 本文件的中文注释用于阅读，运行regenerate.sh重新生成时可能被覆盖；生成了类型不代表业务层已使用该功能。
+ */
+
 #define CANARD_DSDLC_INTERNAL
 #include <uavcan.protocol.file.Delete_res.h>
 #include <string.h>
@@ -6,6 +12,7 @@
 #include <test_helpers.h>
 #endif
 
+/** 中文说明：将本类型结构序列化为协议位流；外层encode返回字节数，带前导下划线的内部入口推进bit_ofs，供嵌套类型复用。 */
 uint32_t uavcan_protocol_file_DeleteResponse_encode(struct uavcan_protocol_file_DeleteResponse* msg, uint8_t* buffer
 #if CANARD_ENABLE_TAO_OPTION
     , bool tao
@@ -26,6 +33,7 @@ uint32_t uavcan_protocol_file_DeleteResponse_encode(struct uavcan_protocol_file_
 /*
   return true if the decode is invalid
  */
+/** 中文说明：按DSDL字段位宽反序列化；返回true表示失败、false表示成功；内部入口推进bit_ofs，外层还核对载荷长度。 */
 bool uavcan_protocol_file_DeleteResponse_decode(const CanardRxTransfer* transfer, struct uavcan_protocol_file_DeleteResponse* msg) {
 #if CANARD_ENABLE_TAO_OPTION
     if (transfer->tao && (transfer->payload_len > UAVCAN_PROTOCOL_FILE_DELETE_RESPONSE_MAX_SIZE)) {
@@ -55,6 +63,7 @@ bool uavcan_protocol_file_DeleteResponse_decode(const CanardRxTransfer* transfer
 }
 
 #ifdef CANARD_DSDLC_TEST_BUILD
+/** 中文说明：仅在CANARD_DSDLC_TEST_BUILD启用时生成随机样本，供编解码测试使用，不是电调实际控制指令。 */
 struct uavcan_protocol_file_DeleteResponse sample_uavcan_protocol_file_DeleteResponse_msg(void) {
     struct uavcan_protocol_file_DeleteResponse msg;
 

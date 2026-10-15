@@ -1,3 +1,9 @@
+/*
+ * 中文导读：DSDL生成协议代码：节点心跳，包括运行时间、健康度和运行模式。
+ * 编解码位宽、字段顺序、类型签名与ID共同决定兼容性。TAO表示尾数组优化；内部decode返回true表示失败。
+ * 本文件的中文注释用于阅读，运行regenerate.sh重新生成时可能被覆盖；生成了类型不代表业务层已使用该功能。
+ */
+
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,11 +35,11 @@ struct uavcan_protocol_NodeStatus {
 #if defined(__cplusplus) && defined(DRONECAN_CXX_WRAPPERS)
     using cxx_iface = uavcan_protocol_NodeStatus_cxx_iface;
 #endif
-    uint32_t uptime_sec;
-    uint8_t health;
-    uint8_t mode;
-    uint8_t sub_mode;
-    uint16_t vendor_specific_status_code;
+    uint32_t uptime_sec; // 节点启动后经过的秒数
+    uint8_t health; // 节点健康状态枚举
+    uint8_t mode; // 节点运行模式
+    uint8_t sub_mode; // 节点子模式
+    uint16_t vendor_specific_status_code; // 厂商自定义状态码
 };
 
 #ifdef __cplusplus
@@ -51,6 +57,7 @@ bool uavcan_protocol_NodeStatus_decode(const CanardRxTransfer* transfer, struct 
 #if defined(CANARD_DSDLC_INTERNAL)
 static inline void _uavcan_protocol_NodeStatus_encode(uint8_t* buffer, uint32_t* bit_ofs, struct uavcan_protocol_NodeStatus* msg, bool tao);
 static inline bool _uavcan_protocol_NodeStatus_decode(const CanardRxTransfer* transfer, uint32_t* bit_ofs, struct uavcan_protocol_NodeStatus* msg, bool tao);
+/** 中文说明：将本类型结构序列化为协议位流；外层encode返回字节数，带前导下划线的内部入口推进bit_ofs，供嵌套类型复用。 */
 void _uavcan_protocol_NodeStatus_encode(uint8_t* buffer, uint32_t* bit_ofs, struct uavcan_protocol_NodeStatus* msg, bool tao) {
     (void)buffer;
     (void)bit_ofs;
@@ -72,6 +79,7 @@ void _uavcan_protocol_NodeStatus_encode(uint8_t* buffer, uint32_t* bit_ofs, stru
 /*
  decode uavcan_protocol_NodeStatus, return true on failure, false on success
 */
+/** 中文说明：按DSDL字段位宽反序列化；返回true表示失败、false表示成功；内部入口推进bit_ofs，外层还核对载荷长度。 */
 bool _uavcan_protocol_NodeStatus_decode(const CanardRxTransfer* transfer, uint32_t* bit_ofs, struct uavcan_protocol_NodeStatus* msg, bool tao) {
     (void)transfer;
     (void)bit_ofs;

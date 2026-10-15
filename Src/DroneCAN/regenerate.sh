@@ -1,4 +1,6 @@
 #!/bin/bash
+# 中文导读：从上游DSDL重新生成本项目使用的协议C接口。必须在仓库根目录执行。
+# 此脚本会删除tmp临时目录及现有dsdl_generated目录并重新复制；手工中文注释也会被覆盖。
 # regenerate the C API from DSDL
 
 [ -d Src/DroneCAN ] || {
@@ -6,6 +8,7 @@
     exit 1
 }
 
+# 下载协议定义与生成器到临时工作目录。
 download() {
     /bin/rm -rf tmp
     mkdir -p tmp
@@ -17,6 +20,7 @@ download() {
     git clone --depth 1 https://github.com/DroneCAN/dronecan_dsdlc tmp/dronecan_dsdlc
 }
 
+# 调用生成器，再由下方MSGS列表筛选本项目保留的消息族。
 generate() {
     echo "Running generator"
     python3 tmp/dronecan_dsdlc/dronecan_dsdlc.py -O tmp/dsdl_generated tmp/DSDL/dronecan tmp/DSDL/uavcan tmp/DSDL/com tmp/DSDL/ardupilot

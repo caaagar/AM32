@@ -9,6 +9,7 @@ import sys
 APP_SIGNATURE_MAGIC1 = 0x68f058e6
 APP_SIGNATURE_MAGIC2 = 0xafcee5a0
 
+# 按原实现逐位计算CRC32，初值为0且不额外取反，须与引导程序校验算法一致。
 def crc32(buf):
     '''crc32 implementation'''
     crc = 0
@@ -27,6 +28,7 @@ def crc32(buf):
 # result = crc32(buf, len(buf))
 # print(f"CRC32: {hex(result)}")
 
+# 找到双魔数描述符，分别计算描述符前后两段CRC，并同步回填BIN和ELF中的镜像长度/校验字段。
 def set_app_descriptor(bin_file, elf_file):
     '''setup app descriptor in bin file and elf file'''
     descriptor = struct.pack("<II", APP_SIGNATURE_MAGIC1, APP_SIGNATURE_MAGIC2);
@@ -38,6 +40,7 @@ def set_app_descriptor(bin_file, elf_file):
         sys.exit(1)
 
     # full descriptor length
+    # 44字节须与固件中的app_signature布局一致，描述符本身不参与两段CRC。
     desc_len = 44
 
     img1 = bytearray(img[:offset])
@@ -62,6 +65,7 @@ def set_app_descriptor(bin_file, elf_file):
     open(elf_file, 'wb').write(elf_img)
     print("Applied APP_DESCRIPTOR %08x%08x for %s" % (crc1, crc2, bin_file))
 
+# 命令行只处理名称含_CAN_的固件；此工具会原地修改传入的两个产物文件。
 from argparse import ArgumentParser
 parser = ArgumentParser(description="AM32 set application signature")
 

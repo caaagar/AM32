@@ -1,4 +1,9 @@
 /*
+ * 中文导读：DShot输入解码、特殊命令和双向遥测编码。输入链路：DMA边沿时间 → 16位帧 → 校验 → 油门/命令；回传链路：电气周期/EDT → 校验 → GCR → 定时器DMA。
+ * 0为停止，1至47为命令，48至2047为油门。双向DShot遥测与电机允许正反转是两个独立概念。
+ */
+
+/*
  * dshot.c
  *
  *  Created on: Apr. 22, 2020
@@ -69,6 +74,7 @@ uint8_t programming_mode;
 uint16_t position;
 uint8_t  new_byte;
 
+/** 中文说明：从32个DMA边沿时间恢复16位DShot帧，核对校验和后分发油门/命令；编程状态下按位置、值、确认码处理设置。 */
 void computeDshotDMA()
 {
     dshot_frametime = dma_buffer[31] - dma_buffer[0];
@@ -81,6 +87,7 @@ void computeDshotDMA()
             const uint16_t pdiff = dma_buffer[(i << 1) + 1] - dma_buffer[(i << 1)];
             dpulse[i] = (pdiff > halfpulsetime);
         }
+/* DShot前12位为11位指令/油门加1位遥测请求，最后4位为按半字节异或得到的校验。 */
         uint8_t calcCRC = ((dpulse[0] ^ dpulse[4] ^ dpulse[8]) << 3 | (dpulse[1] ^ dpulse[5] ^ dpulse[9]) << 2 | (dpulse[2] ^ dpulse[6] ^ dpulse[10]) << 1 | (dpulse[3] ^ dpulse[7] ^ dpulse[11]));
         uint8_t checkCRC = (dpulse[12] << 3 | dpulse[13] << 2 | dpulse[14] << 1 | dpulse[15]);
 
@@ -95,6 +102,7 @@ void computeDshotDMA()
                 }
             }
         }
+/* 双向DShot使用反相校验约定；这一步只处理协议校验，不决定电机正反转。 */
         if (dshot_telemetry) {
             checkCRC = ~checkCRC + 16;
         }
@@ -107,6 +115,7 @@ void computeDshotDMA()
             if (dpulse[11] == 1) {
                 send_telemetry = 1;
             }
+/* 设置编程是多帧状态机：先收缓冲区位置，再收新字节，最后等待确认码；持久化仍需保存命令。 */
             if(programming_mode > 0){  
                 if(programming_mode == 1){ // begin programming mode
                     position = tocheck;    // eepromBuffer position
@@ -163,6 +172,7 @@ void computeDshotDMA()
                     command_count = 6; // go on right away
                 }
                 command_count++;
+/* 多数配置命令要求重复接收以减少误触发；提示音命令在上方直接满足计数条件。 */
                 if (command_count >= 6) {
                     command_count = 0;
                     switch (dshotcommand) { // todo
@@ -239,6 +249,7 @@ void computeDshotDMA()
     }
 }
 
+/** 中文说明：构造双向DShot回传：选择电气周期或扩展遥测，追加反码校验，经GCR编码后生成平台需要的输出数据。 */
 void make_dshot_package(uint16_t com_time)
 {
     uint16_t extended_frame_to_send = 0;
@@ -253,6 +264,7 @@ void make_dshot_package(uint16_t com_time)
             telem_scheduler.voltage_count++;
             telem_scheduler.temp_count++;
 
+/* EDT将电流/电压/温度插入转速回传空隙；调度计数按调用推进，last_sent_extended保证相邻扩展帧间插入电气周期帧。 */
             if (telem_scheduler.current_count >= CURRENT_EDT_RATE_DIVISOR) {
                 extended_frame_to_send = 0b0110 << 8 | (uint8_t)(actual_current / 100);
                 telem_scheduler.current_count = 0;
@@ -301,6 +313,7 @@ void make_dshot_package(uint16_t com_time)
         dshot_full_number = ((shift_amount << 9) | (com_time >> shift_amount));
     }
     // calculate checksum
+/* 遥测载荷先按4位分组异或并取反，再附到12位数据末尾组成16位待编码内容。 */
     uint16_t csum = 0;
     uint16_t csum_data = dshot_full_number;
     for (int i = 0; i < 3; i++) {
@@ -314,6 +327,7 @@ void make_dshot_package(uint16_t com_time)
 
     // GCR RLL encode 16 to 20 bit
 
+/* GCR把每4位映射为5位，16位变20位；随后平台分支生成相邻电平转换或专用外设需要的编码。 */
     gcrnumber = gcr_encode_table[(dshot_full_number >> 12)] << 15  // first set of four digits
         | gcr_encode_table[(0xf & (dshot_full_number >> 8))] << 10 // 2nd set of 4 digits
         | gcr_encode_table[(0xf & (dshot_full_number >> 4))] << 5  // 3rd set of four digits

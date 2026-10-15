@@ -1,4 +1,8 @@
 /*
+ * 中文导读：使用电机绕组发声的提示音模块。通过换相步、PWM频率和小占空比产生声音；各音效结束后恢复PWM时基。
+ */
+
+/*
  * sounds.c
  *
  *  Created on: May 13, 2020
@@ -20,6 +24,7 @@
 uint8_t beep_volume;
 
 
+/** 中文说明：将三相占空比置零后等待，再恢复提示音占空比；用于旋律中的静音间隔。 */
 void pause(uint16_t ms)
 {
     SET_DUTY_CYCLE_ALL(0);
@@ -28,6 +33,7 @@ void pause(uint16_t ms)
                                      // above 25 out of 2000
 }
 
+/** 中文说明：将音量参数限制到0至11，再乘3转换为提示音比较值；不是直接设置电机运行油门。 */
 void setVolume(uint8_t volume)
 {
     if (volume > 11) {
@@ -36,6 +42,7 @@ void setVolume(uint8_t volume)
     beep_volume = volume * 3; // volume variable from 0 - 11 equates to CCR value of 0-33
 }
 
+/** 中文说明：把提示音占空比写入各PWM通道；实际音高由PWM周期和分频决定。 */
 void setCaptureCompare()
 {
     SET_DUTY_CYCLE_ALL(beep_volume); // volume of the beep, (duty cycle) 
@@ -44,6 +51,7 @@ void setCaptureCompare()
 /*
  * @Brief 	Freq in hz, bduration in ms
  */
+/** 中文说明：按频率设置PWM周期并发出BlueJay音符；非NXP分支在此等待bduration毫秒，NXP分支没有同一处延时。 */
 void playBJNote(uint16_t freq, uint16_t bduration)
 {
 #ifdef NXP
@@ -61,11 +69,13 @@ void playBJNote(uint16_t freq, uint16_t bduration)
 #endif
 }
 
+/** 中文说明：将BlueJay音符周期编码换算为Hz；常数247和4000属于旋律格式转换。 */
 uint16_t getBlueJayNoteFrequency(uint8_t bjarrayfreq)
 {
     return (uint16_t)(10000000 / ((uint32_t)bjarrayfreq * 247 + 4000));
 }
 
+/** 中文说明：解析设置中的音符/休止符和扩展时长，逐个播放后关闭桥臂并恢复PWM分频与周期。 */
 void playBlueJayTune(void)
 {
     uint8_t  full_time_count = 0;
@@ -115,6 +125,7 @@ void playBlueJayTune(void)
 }
 
 
+/** 中文说明：启动时优先播放自定义旋律，否则播放三段默认音；操作期间禁中断，结束后恢复运行PWM配置。 */
 void playStartupTune()
 {
     __disable_irq();
@@ -145,6 +156,7 @@ comStep(3);
     __enable_irq();
 }
 
+/** 中文说明：播放有刷模式启动提示音，结束时关闭输出并恢复PWM时基。 */
 void playBrushedStartupTune()
 {
     __disable_irq();
@@ -169,6 +181,7 @@ void playBrushedStartupTune()
     __enable_irq();
 }
 
+/** 中文说明：按固定换相步和分频序列播放预设旋律，结束后关闭输出并恢复PWM周期。 */
 void playDuskingTune()
 {
     setCaptureCompare();
@@ -195,6 +208,7 @@ void playDuskingTune()
     SET_AUTO_RELOAD_PWM(TIMER1_MAX_ARR);
 }
 
+/** 中文说明：播放另一组输入/状态提示音，期间喂看门狗，结束后复位信号超时计数。 */
 void playInputTune2()
 {
     SET_AUTO_RELOAD_PWM(TIM1_AUTORELOAD);
@@ -216,6 +230,7 @@ void playInputTune2()
     __enable_irq();
 }
 
+/** 中文说明：播放输入确认提示音；通过改变PWM分频改变音高，结束后恢复运行配置。 */
 void playInputTune()
 {
     __disable_irq();
@@ -236,6 +251,7 @@ void playInputTune()
     __enable_irq();
 }
 
+/** 中文说明：播放默认双音确认提示，完成后关闭功率桥并恢复PWM时基。 */
 void playDefaultTone()
 {
     SET_AUTO_RELOAD_PWM(TIM1_AUTORELOAD);
@@ -252,6 +268,7 @@ void playDefaultTone()
     SET_AUTO_RELOAD_PWM(TIMER1_MAX_ARR);
 }
 
+/** 中文说明：播放参数变化提示音，完成后关闭输出并清除信号超时计数。 */
 void playChangedTone()
 {
     SET_AUTO_RELOAD_PWM(TIM1_AUTORELOAD);
@@ -268,6 +285,7 @@ void playChangedTone()
     SET_AUTO_RELOAD_PWM(TIMER1_MAX_ARR);
 }
 
+/** 中文说明：循环改变换相步与PWM分频产生寻找电调提示音；播放期间禁中断并喂看门狗。 */
 void playBeaconTune3()
 {
     SET_AUTO_RELOAD_PWM(TIM1_AUTORELOAD);

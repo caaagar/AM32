@@ -1,4 +1,9 @@
 /*
+ * 中文导读：libcanard公共类型和API。CanardCANFrame是一帧，CanardRxTransfer是重组后的传输，CanardInstance持有节点、队列和内存池状态。
+ * 接收筛选回调决定是否接受类型，接收完成回调消费完整传输；内存池生命周期由调用者管理。
+ */
+
+/*
  * Copyright (c) 2016-2019 UAVCAN Team
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -459,6 +464,7 @@ struct CanardRxTransfer
  * recommended way to detect the required pool size is to measure the peak pool usage after a stress-test. Refer to
  * the function canardGetPoolAllocatorStatistics().
  */
+/** 中文接口：初始化libcanard实例、固定块内存池及接收/过滤回调；调用者提供整个内存池，不使用常规堆分配。 */
 void canardInit(CanardInstance* out_ins,                    ///< Uninitialized library instance
                 void* mem_arena,                            ///< Raw memory chunk used for dynamic allocation
                 size_t mem_arena_size,                      ///< Size of the above, in bytes
@@ -471,12 +477,14 @@ void canardInit(CanardInstance* out_ins,                    ///< Uninitialized l
  * The user pointer is configured once during initialization.
  * It can be used to store references to any user-specific data, or to link the instance object with C++ objects.
  */
+/** 中文接口：返回初始化时保存的用户上下文指针，方便回调关联应用状态。 */
 void* canardGetUserReference(const CanardInstance* ins);
 
 /**
  * Assigns a new node ID value to the current node.
  * Node ID can be assigned only once.
  */
+/** 中文接口：设置本地节点ID；按协议区分匿名节点与已分配地址的节点。 */
 void canardSetLocalNodeID(CanardInstance* ins,
                           uint8_t self_node_id);
 
@@ -484,17 +492,20 @@ void canardSetLocalNodeID(CanardInstance* ins,
  * Returns node ID of the local node.
  * Returns zero (broadcast) if the node ID is not set, i.e. if the local node is anonymous.
  */
+/** 中文接口：读取本地节点ID，匿名节点返回广播节点标识。 */
 uint8_t canardGetLocalNodeID(const CanardInstance* ins);
 
 /**
  * Forgets the current node ID value so that a new Node ID can be assigned.
  */
+/** 中文接口：清除本地节点ID，使实例重新处于匿名状态。 */
 void canardForgetLocalNodeID(CanardInstance* ins);
 
 /**
  * Initialise TX transfer object.
  * Should be called at least once before using transfer object to send transmissions.
 */
+/** 中文接口：清零发送描述结构，并在启用相应特性时设置默认传输选项。 */
 void canardInitTxTransfer(CanardTxTransfer* transfer);
 
 /**
@@ -517,11 +528,13 @@ void canardInitTxTransfer(CanardTxTransfer* transfer);
  * Returns the number of frames enqueued, or negative error code.
  */
 
+/** 中文接口：校验广播传输参数，构造CAN标识符/匿名鉴别值并分帧入发送队列。 */
 int16_t canardBroadcastObj(CanardInstance* ins,            ///< Library instance
                            CanardTxTransfer* transfer      ///< Transfer object
                           );
 
 // Legacy API, try to avoid using it, as this will not be extended with new features
+/** 中文接口：构造广播传输描述并交给发送组帧逻辑；实际总线发送由底层驱动消费队列。 */
 int16_t canardBroadcast(CanardInstance* ins,            ///< Library instance
                         uint64_t data_type_signature,   ///< See above
                         uint16_t data_type_id,          ///< Refer to the specification
@@ -557,11 +570,13 @@ int16_t canardBroadcast(CanardInstance* ins,            ///< Library instance
  * Returns the number of frames enqueued, or negative error code.
  */
 
+/** 中文接口：校验服务传输参数，组合服务CAN标识符并将载荷分帧排队。 */
 int16_t canardRequestOrRespondObj(CanardInstance* ins,             ///< Library instance
                                   uint8_t destination_node_id,     ///< Node ID of the server/client
                                   CanardTxTransfer* transfer       ///< Transfer object
                                 );
 // Legacy API, try to avoid using it, as this will not be extended with new features
+/** 中文接口：构造服务请求/响应描述并提交；目的节点、服务类型和transfer_id决定对应会话。 */
 int16_t canardRequestOrRespond(CanardInstance* ins,             ///< Library instance
                                uint8_t destination_node_id,     ///< Node ID of the server/client
                                uint64_t data_type_signature,    ///< See above
@@ -587,6 +602,7 @@ int16_t canardRequestOrRespond(CanardInstance* ins,             ///< Library ins
  * The application will call this function after canardBroadcast() or canardRequestOrRespond() to transmit generated
  * frames over the CAN bus.
  */
+/** 中文接口：查看最高优先级的待发送CAN帧而不删除；没有帧时返回空指针。 */
 CanardCANFrame* canardPeekTxQueue(const CanardInstance* ins);
 
 /**
@@ -596,6 +612,7 @@ CanardCANFrame* canardPeekTxQueue(const CanardInstance* ins);
  * the frame is not transmitted.
  */
 #if CANARD_ENABLE_DEADLINE
+/** 中文接口：读取队首发送项的截止时间；仅在启用对应发送期限特性时可用。 */
 uint64_t canardPeekTxQueueDeadline(const CanardInstance* ins);
 #endif
 /**
@@ -604,6 +621,7 @@ uint64_t canardPeekTxQueueDeadline(const CanardInstance* ins);
  * Calling canardBroadcast() or canardRequestOrRespond() between canardPeekTxQueue() and canardPopTxQueue()
  * is NOT allowed, because it may change the frame at the top of the TX queue.
  */
+/** 中文接口：移除已处理的发送队首并归还其内存块；应由调用者在处理发送结果后执行。 */
 void canardPopTxQueue(CanardInstance* ins);
 
 /**
@@ -612,6 +630,7 @@ void canardPopTxQueue(CanardInstance* ins);
  *
  * Return value will report any errors in decoding packets.
  */
+/** 中文接口：解析CAN标识符和尾字节，跟踪transfer_id/翻转位并重组多帧载荷，校验后调用应用接收回调。 */
 int16_t canardHandleRxFrame(CanardInstance* ins,
                             const CanardCANFrame* frame,
                             uint64_t timestamp_usec);
@@ -621,6 +640,7 @@ int16_t canardHandleRxFrame(CanardInstance* ins,
  * This function must be invoked by the application periodically, about once a second.
  * Also refer to the constant CANARD_RECOMMENDED_STALE_TRANSFER_CLEANUP_INTERVAL_USEC.
  */
+/** 中文接口：按当前微秒时间清理超时接收会话及相关资源，防止丢失多帧传输长期占用内存。 */
 void canardCleanupStaleTransfers(CanardInstance* ins,
                                  uint64_t current_time_usec);
 
@@ -693,6 +713,7 @@ void canardEncodeScalar(void* destination,      ///< Destination buffer where th
  * If the application didn't call this function before returning from the callback, the library will do that,
  * so it is guaranteed that the memory will not leak.
  */
+/** 中文接口：释放接收传输动态载荷并清除引用；应用若提前释放须避免后续再次使用载荷。 */
 void canardReleaseRxTransferPayload(CanardInstance* ins,
                                     CanardRxTransfer* transfer);
 
@@ -701,6 +722,7 @@ void canardReleaseRxTransferPayload(CanardInstance* ins,
  * Refer to the type CanardPoolAllocatorStatistics.
  * Use this function to determine worst case memory needs of your application.
  */
+/** 中文接口：返回固定块内存池使用统计，便于观察容量与峰值占用。 */
 CanardPoolAllocatorStatistics canardGetPoolAllocatorStatistics(CanardInstance* ins);
 
 /**
@@ -710,10 +732,14 @@ CanardPoolAllocatorStatistics canardGetPoolAllocatorStatistics(CanardInstance* i
  * Vast majority of modern computers and microcontrollers use IEEE 754, so this limitation should not affect
  * portability.
  */
+/** 中文接口：将本机32位浮点转换成协议使用的16位浮点编码，按实现处理特殊值和舍入。 */
 uint16_t canardConvertNativeFloatToFloat16(float value);
+/** 中文接口：把协议16位浮点编码展开为本机浮点值，包括零、非规格化数及特殊值。 */
 float canardConvertFloat16ToNativeFloat(uint16_t value);
 
+/** 中文接口：从CAN标识符提取消息或服务数据类型编号。 */
 uint16_t extractDataType(uint32_t id);
+/** 中文接口：从CAN标识符区分广播消息、服务请求和服务响应。 */
 CanardTransferType extractTransferType(uint32_t id);
 
 /// Abort the build if the current platform is not supported.
@@ -727,7 +753,9 @@ CANARD_STATIC_ASSERT(((uint32_t)CANARD_MULTIFRAME_RX_PAYLOAD_HEAD_SIZE) < 32,
 
 #if CANARD_ALLOCATE_SEM
 // user implemented functions for taking and freeing semaphores
+/** 中文接口：获取可选的内存池并发访问保护；具体实现由使用环境提供。 */
 void canard_allocate_sem_take(CanardPoolAllocator *allocator);
+/** 中文接口：释放可选的内存池并发访问保护；须与获取操作配对。 */
 void canard_allocate_sem_give(CanardPoolAllocator *allocator);
 #endif
 

@@ -1,3 +1,8 @@
+/*
+ * 中文导读：电调主控制逻辑。阅读顺序：loadEEpromSettings读取配置 → setInput生成占空比目标 → tenKhzRoutine限制变化并写PWM；过零检测与换相由轮询/比较器中断共同完成。
+ * 内部占空比通常以2000为满量程，最终按tim1_arr缩放；电气转速不同于机械转速，机械转速还取决于磁极对数。
+ */
+
 
 /* AM32- multi-purpose brushless controller firmware for the stm32f051 */
 
@@ -280,6 +285,7 @@ uint32_t MAXIMUM_RPM_SPEED_CONTROL = 10000;
 uint32_t MINIMUM_RPM_SPEED_CONTROL = 1000;
 
 // assign speed control PID values values are x10000
+/* 这里是电调自身的转速环，不是飞控姿态PID；整数增益的输出缩放由后续除10000处理。 */
 fastPID speedPid = { // commutation speed loop time
     .Kp = 10,
     .Ki = 0,
@@ -304,9 +310,11 @@ fastPID stallPid = { // 1khz loop time
     .output_limit = 50000
 };
 
+/* RAM中的设置镜像；修改字段不一定立刻持久化，调用保存函数后才写入Flash。 */
 EEprom_t eepromBuffer;
 volatile uint32_t polling_mode_changeover;
 volatile uint8_t ramp_divider;
+/* 启动/低速/高速阶段分别有占空比变化上限；它们控制油门变化速度，与低RPM下允许的最大油门不同。 */
 volatile uint8_t max_ramp_startup = RAMP_SPEED_STARTUP;
 volatile uint8_t max_ramp_low_rpm = RAMP_SPEED_LOW_RPM;
 volatile uint8_t max_ramp_high_rpm = RAMP_SPEED_HIGH_RPM;
@@ -325,6 +333,7 @@ uint8_t crsf_input_channel = 1;
 uint8_t crsf_output_PWM_channel = 2;
 uint8_t telemetry_interval_ms = 30;
 uint8_t temp_advance;
+/* KV是每伏空载机械转速系数；运行配置从压缩字节解码，不能把EEPROM原始字节直接当KV。 */
 uint16_t motor_kv = 2000;
 uint8_t dead_time_override = DEAD_TIME;
 uint16_t stall_protect_target_interval = TARGET_STALL_PROTECTION_INTERVAL;
@@ -336,6 +345,7 @@ volatile uint8_t temp_comp_pwm;
 uint8_t brake_countdown;
 
 //============================= Servo Settings ==============================
+/* 舵机阈值是微秒脉宽；内部统一输入范围与这里的1100/1500/1900脉宽数值不是同一单位。 */
 uint16_t servo_low_threshold = 1100; // anything below this point considered 0
 uint16_t servo_high_threshold = 1900; // anything above this point considered 2000 (max)
 uint16_t servo_neutral = 1500;
@@ -392,6 +402,7 @@ char brushed_direction_set = 0;
 uint16_t tenkhzcounter = 0;
 int32_t consumed_current = 0;
 int32_t smoothed_raw_current = 0;
+/* 实测电流内部单位为0.01A；例如1000代表10A，后续CAN/EDT转换会再缩放。 */
 int16_t actual_current = 0;
 
 char lowkv = 0;
@@ -409,6 +420,7 @@ uint8_t max_duty_cycle_change = 2;
 char fast_accel = 1;
 char fast_deccel = 0;
 uint16_t last_duty_cycle = 0;
+/* 期望占空比，通常0至2000；实际duty_cycle还要经过变化斜率限制，再转换为定时器比较值。 */
 uint16_t duty_cycle_setpoint = 0;
 char play_tone_flag = 0;
 
@@ -576,9 +588,11 @@ uint8_t ubAnalogWatchdogStatus = RESET;
 volatile char input_ready = 0;
 #endif
 
+/** 中文说明：计算整数PID并限制积分与输出；本实现误差为actual-target，微分是相邻调用的误差差，未显式除以时间。 */
 int32_t doPidCalculations(struct fastPID* pidnow, int actual, int target)
 {
 
+/* 误差符号按本实现为实际值减目标值；电流环调用者再减去PID输出，使过流时降低占空比上限。 */
     pidnow->error = actual - target;
     pidnow->integral = pidnow->integral + pidnow->error * pidnow->Ki;
     if (pidnow->integral > pidnow->integral_limit) {
@@ -602,6 +616,7 @@ int32_t doPidCalculations(struct fastPID* pidnow, int actual, int target)
     return pidnow->pid_output;
 }
 
+/** 中文说明：从Flash加载设置，兼容旧版字段并转换为运行参数：PWM、进角、启动功率、输入协议、电流限制、油门斜率和低转速限幅。 */
 void loadEEpromSettings()
 {
     read_flash_bin(eepromBuffer.buffer, eeprom_address, sizeof(eepromBuffer.buffer));
@@ -654,6 +669,7 @@ void loadEEpromSettings()
     }
     startup_max_duty_cycle = minimum_duty_cycle + 400;  
 
+/* EEPROM使用步进40、偏置20的编码；部分低压目标还在后续编译分支继续缩放。 */
     motor_kv = (eepromBuffer.motor_kv * 40) + 20;
 #ifdef THREE_CELL_MAX
 		motor_kv =  motor_kv / 2;
@@ -768,6 +784,7 @@ void loadEEpromSettings()
             EDT_ARMED = 1;
         }
         
+/* 小于10时用ramp_divider降低斜率更新频率；更大值按10分之一转换，并分别约束各阶段原有上限。 */
         if(eepromBuffer.max_ramp < 10){
           ramp_divider = 9;
           max_ramp_startup = eepromBuffer.max_ramp;
@@ -791,6 +808,7 @@ void loadEEpromSettings()
         }
         // guard divisions for an erased eeprom (motor_poles 0 or 0xff),
         // ARM hardware division returns 0 but it is UB in C
+/* 先做整数32/磁极数，再参与KV换算；存在整除量化，结果不能直接理解为机械RPM阈值。这里只解释现有公式。 */
         uint8_t rpm_level_div = 0;
         if (eepromBuffer.motor_poles != 0) {
             rpm_level_div = 32 / eepromBuffer.motor_poles;
@@ -812,11 +830,13 @@ void loadEEpromSettings()
     temp_comp_pwm = eepromBuffer.comp_pwm;
 }
 
+/** 中文说明：将当前RAM设置缓冲区写入Flash；此操作会持久化配置，具体擦写由平台实现负责。 */
 void saveEEpromSettings()
 {
     save_flash_nolib(eepromBuffer.buffer, sizeof(eepromBuffer.buffer), eeprom_address);
 }
 
+/** 中文说明：使用环形缓冲区维护ADC电流采样滑动平均：移除旧值、加入新值，返回原始ADC计数的平均数。 */
 uint16_t getSmoothedCurrent()
 {
     total = total - readings[readIndex];
@@ -830,6 +850,7 @@ uint16_t getSmoothedCurrent()
     return smoothedcurrent;
 }
 
+/** 中文说明：读取当前悬空相的反电动势比较结果，按预期上升/下降方向累计有效样本；过多反向样本会清零计数。 */
 void getBemfState()
 {
     uint8_t current_state = 0;
@@ -868,6 +889,7 @@ void getBemfState()
     }
 }
 
+/** 中文说明：按正反转推进六步换相序号，切换功率桥与比较器采样相，并保存本步间隔；六步对应一个电气周期。 */
 void commutate()
 {
     if (forward == 1) {
@@ -916,6 +938,7 @@ void commutate()
  * 			This disables the COM_TIMER interrupt.
  * 			Then it enables the comparator to generate its interrupt.
  */
+/** 中文说明：换相等待定时器到期后执行换相，平滑间隔并计算下一次等待时间；中断模式下重新允许比较器检测。 */
 void PeriodElapsedCallback()
 {
     DISABLE_COM_TIMER_INT(); // disable interrupt
@@ -926,6 +949,7 @@ void PeriodElapsedCallback()
 	} else {
 	  advance = (commutation_interval * auto_advance_level) >> 6; // 60 divde 64 0.9375 degree increments
     }
+/* 六步无感控制通常在过零后约半个换相间隔换相；advance从该等待时间中扣除，数值越大换相越提前。 */
     waitTime = (commutation_interval >> 1) - advance;
     if (!old_routine) {
         enableCompInterrupts(); // enable comp interrupt
@@ -940,6 +964,7 @@ void PeriodElapsedCallback()
  * 			Disables the comparator interrupt.
  * 			Enables the COM_TIMER and sets it to generate an interrupt after the wait time.
  */
+/** 中文说明：比较器过零中断入口：重复采样排除不稳定电平，记录过零时间并安排延后换相，而非立即切换功率桥。 */
 void interruptRoutine()
 {
 //   if (average_interval > 125) {
@@ -963,6 +988,7 @@ void interruptRoutine()
                 return;
             }
         }
+/* 记录过零及设置换相定时器要保持原子性；先屏蔽当前相过零，避免同一过零反复触发。 */
     __disable_irq();
     maskPhaseInterrupts();
     lastzctime = thiszctime;
@@ -972,6 +998,7 @@ void interruptRoutine()
     __enable_irq();
 }
 
+/** 中文说明：首次运行时建立初始换相与计时状态，然后使能比较器中断；不代表已完成可靠过零锁定。 */
 void startMotor()
 {
     if (running == 0) {
@@ -983,8 +1010,10 @@ void startMotor()
     enableCompInterrupts();
 }
 
+/** 中文说明：把原始输入转换成运行油门：处理方向/车模刹车/正弦启动/速度闭环，再施加启动、电流及占空比限制。 */
 void setInput()
 {
+/* 电机双向模式：从输入编码决定方向和幅度。与双向DShot回传功能相互独立。 */
     if (eepromBuffer.bi_direction) {
         if (dshot == 0) {
             if (eepromBuffer.rc_car_reverse) {
@@ -1332,6 +1361,7 @@ if (!stepper_sine && armed) {
                 }
             }
 
+    /* 应用主循环根据低转速/温度算出的占空比上限。限最大值与后续ramp限制每次变化量是两层不同约束。 */
             if (duty_cycle_setpoint > duty_cycle_maximum) {
                 duty_cycle_setpoint = duty_cycle_maximum;
             }
@@ -1350,8 +1380,10 @@ if (!stepper_sine && armed) {
 #endif
 }
 
+/** 中文说明：历史名称，当前按LOOP_FREQUENCY_HZ调用（代码注明20kHz）：管理解锁、轮询过零、分频PID、占空比斜率和PWM写入。 */
 void tenKhzRoutine()
 { // 20khz as of 2.00 to be renamed
+/* 本次先取目标，再与last_duty_cycle比较限制变化；最终写入PWM的是adjusted_duty_cycle。 */
     duty_cycle = duty_cycle_setpoint;
     tenkhzcounter++;
     ledcounter++;
@@ -1436,6 +1468,7 @@ void tenKhzRoutine()
             }
         }
 #endif
+/* 通过计数分频执行电流/堵转/转速PID，并标记ADC处理；实际频率由周期中断频率与此比较条件共同决定。 */
         if (one_khz_loop_counter > PID_LOOP_DIVIDER) { // 1khz PID loop
             PROCESS_ADC_FLAG = 1; // set flag to do new adc read at lower priority
             one_khz_loop_counter = 0;
@@ -1474,6 +1507,7 @@ void tenKhzRoutine()
                 }
             }
         }
+/* 按更新分频选择启动/低速/高速斜率，对加油和收油都限制与上次占空比之差。 */
         if (ramp_count > ramp_divider) {
           ramp_count = 0;
 #ifdef VOLTAGE_BASED_RAMP
@@ -1517,6 +1551,7 @@ void tenKhzRoutine()
             adjusted_duty_cycle = ((duty_cycle * tim1_arr) / 2000) + 1;
         }
         } else {
+/* 电机仍在旋转但零油门时，临时切换互补PWM实现滑行/刹车，或倒计时转入停机刹车策略。 */
           if(running && input < 47){ // brake on zero throttle behavior while motor is still rotating
             if(eepromBuffer.brake_on_zero_throttle == 1){   // coast on 0 throttle
               temp_comp_pwm = 0;                            // tracks rpm until stopped 
@@ -1571,6 +1606,7 @@ void tenKhzRoutine()
 #endif
 }
 
+/** 中文说明：按DMA延后处理标志解码输入或生成遥测；电气周期超出16位范围时饱和到65535，再按路径更新油门。 */
 void processDshot()
 {
     if (compute_dshot_flag == 1) {
@@ -1589,6 +1625,7 @@ void processDshot()
     setInput();
 }
 
+/** 中文说明：按方向推进三相正弦表索引，并将查表结果缩放写入三路PWM；用于开环正弦启动/云台路径，并非FOC电流闭环。 */
 void advanceincrement()
 {
     if (!forward) {
@@ -1632,6 +1669,7 @@ void advanceincrement()
 #endif
 }
 
+/** 中文说明：轮询模式确认过零后的阻塞换相流程：更新间隔、等待进角后的时刻，再按转速/模式条件切换到中断检测。 */
 void zcfoundroutine()
 { // only used in polling mode, blocking routine.
     thiszctime = INTERVAL_TIMER_COUNT;
@@ -1683,6 +1721,7 @@ void zcfoundroutine()
  #endif
 }
 #ifdef BRUSHED_MODE
+/** 中文说明：有刷模式专用：设置双通道方向、映射PWM并施加温度和电流限制；不使用无刷六步过零换相。 */
 void runBrushedLoop()
 {
 
@@ -1745,6 +1784,7 @@ void runBrushedLoop()
 /*
   check device info from the bootloader, confirming pin code and eeprom location
  */
+/** 中文说明：读取引导程序的设备信息，校验标记后按设备编码选择设置Flash地址；SITL直接返回。 */
 static void checkDeviceInfo(void)
 {
 #ifdef MCU_SITL
@@ -1792,6 +1832,7 @@ static void checkDeviceInfo(void)
 
 }
 
+/** 中文说明：固件入口：初始化硬件和设置后循环处理输入、遥测、ADC、保护、转速限幅及正弦/六步模式；实时PWM另由周期中断更新。 */
 int main(void)
 {
 
@@ -1939,6 +1980,7 @@ int main(void)
   startup_max_duty_cycle = startup_max_duty_cycle + 400;
 #endif
 
+/* 后台主循环：不按固定周期执行；中断中的实时换相/PWM与这里的状态、ADC和遥测处理协同工作。 */
     while (1) {
 e_com_time = ((commutation_intervals[0] + commutation_intervals[1] + commutation_intervals[2] + commutation_intervals[3] + commutation_intervals[4] + commutation_intervals[5]) + 4) >> 1; // COMMUTATION INTERVAL IS 0.5US INCREMENTS 
 
@@ -1989,6 +2031,7 @@ if(zero_crosses < 5){
               tim1_arr = 250 * (CPU_FREQUENCY_MHZ/9);
           } 
         }
+/* 信号看门狗：解锁后约0.5秒失联关闭输出并复位；未解锁时使用较长超时。计数由周期中断推进。 */
         if (signaltimeout > (LOOP_FREQUENCY_HZ >> 1)) { // half second timeout when armed;
             if (armed) {
                 allOff();
@@ -2069,6 +2112,7 @@ if(zero_crosses < 5){
         }
 #endif
         average_interval = e_com_time / 3;
+/* 每个电气周期比较平均间隔变化；变化过大时按源码条件标记失步，回到轮询并降低占空比历史值。 */
         if (desync_check && zero_crosses > 10) {
             if ((getAbsDif(last_average_interval, average_interval) > average_interval >> 1) && (average_interval < 2000)) { // throttle resitricted before zc 20.
                 zero_crosses = 0;
@@ -2124,6 +2168,7 @@ if(zero_crosses < 5){
            send_telem_DMA(49);
            send_esc_info_flag = 0;
         }
+/* 在后台处理采样/换算，避免把较重ADC计算全部放进高频PWM中断；各MCU采样分辨率不同。 */
         if (PROCESS_ADC_FLAG == 1) { // for adc and telemetry set adc counter at 1khz loop rate
           ADC_DMA_Callback(); // common to all, Call ADC_DMA callback to get raw data
 #ifdef NO_CURRENT_SENSE
@@ -2174,6 +2219,7 @@ if(zero_crosses < 5){
             //Actual current is in 10mA, so 1 = 10mA
             actual_current = (((smoothed_raw_current * 3300 / 65535) - CURRENT_OFFSET) * 100) / (MILLIVOLT_PER_AMP);
 #else
+/* 电压使用一阶平滑，内部单位是0.01V（如1260表示12.60V）；上方旧英文注释的标度描述有歧义。 */
             battery_voltage = ((7 * battery_voltage) + ((ADC_raw_volts * 3300 / 4095 * VOLTAGE_DIVIDER) / 100)) >> 3;
             smoothed_raw_current = getSmoothedCurrent();
             actual_current = ((smoothed_raw_current * 3300 / 41) - (CURRENT_OFFSET * 100)) / (MILLIVOLT_PER_AMP);
@@ -2199,6 +2245,7 @@ if(zero_crosses < 5){
                   }
                 }
             }
+/* 持续低压才触发锁定停机；持续时间取决于ADC处理频率，正弦模式阈值更短，不是每次瞬时压降都会停机。 */
             if (low_voltage_count > (10000 - (stepper_sine * 9900))) {      // 10 second wait before cut-off for low voltage
               LOW_VOLTAGE_CUTOFF = 1;
               input = 0;
@@ -2230,6 +2277,7 @@ if(zero_crosses < 5){
         stuckcounter = 0;
         if (stepper_sine == 0) {
 
+/* e_com_time按代码换算为一个电气周期的微秒数；e_rpm以100电气转/分为一单位，k_erpm再除10表示千电气转/分。 */
             e_rpm = running * (600000 / e_com_time); // in tens of rpm
             k_erpm = e_rpm / 10; // ecom time is time for one electrical revolution in microseconds
 
@@ -2237,6 +2285,7 @@ if(zero_crosses < 5){
                                           // by default to keep hardware / motors
                                           // protected but can slow down the response
                                           // in the very low end a little.
+/* 在两个电气转速阈值之间逐步放宽最大占空比；不要把low_rpm_level/high_rpm_level直接写成机械RPM而不换算。 */
                 duty_cycle_maximum = map(k_erpm, low_rpm_level, high_rpm_level, throttle_max_at_low_rpm,
                     throttle_max_at_high_rpm); // for more performance lower the
                                                // high_rpm_level, set to a
@@ -2245,6 +2294,7 @@ if(zero_crosses < 5){
 							duty_cycle_maximum = 2000;
 						}
 
+/* 超温时重新计算占空比上限，限制可输出功率；这里没有修改配置中的温度阈值。 */
             if (degrees_celsius > eepromBuffer.limits.temperature) {
               duty_cycle_maximum = map(degrees_celsius, eepromBuffer.limits.temperature - 10, eepromBuffer.limits.temperature + 10,
                 throttle_max_at_high_rpm / 2, 1);
@@ -2258,6 +2308,7 @@ if(zero_crosses < 5){
               filter_level = 2;
             }
 
+/* 自动进角根据占空比映射得到等级，再在换相回调里换算为计时提前量。 */
             if (eepromBuffer.auto_advance) {
               auto_advance_level = map(duty_cycle, 100, 2000, 13, 23);
             }
@@ -2350,6 +2401,7 @@ if(zero_crosses < 5){
                     }
 
                     delayMicros(step_delay);
+/* 在预定电气相位退出开环正弦模式，初始化六步检测状态，再由反电动势逐步接管换相。 */
                     if (phase_A_position == 0) {
                         stepper_sine = 0;
                         running = 1;
@@ -2417,6 +2469,7 @@ if(zero_crosses < 5){
  * @param  line: assert_param error line source number
  * @retval None
  */
+/** 中文说明：平台断言失败回调；目前仅保留用户扩展位置，不会自动输出错误文件或行号。 */
 void assert_failed(uint8_t* file, uint32_t line)
 {
     /* USER CODE BEGIN 6 */
