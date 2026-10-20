@@ -2071,15 +2071,16 @@ if(zero_crosses < 5){
         average_interval = e_com_time / 3;
         if (desync_check && zero_crosses > 10) {
             if ((getAbsDif(last_average_interval, average_interval) > average_interval >> 1) && (average_interval < 2000)) { // throttle resitricted before zc 20.
+                // Preserve the pre-reset zero-cross count for recovery timing.
+                if (zero_crosses > 100) {
+                    average_interval = 5000;
+                }
                 zero_crosses = 0;
                 desync_happened++;
                 if ((!eepromBuffer.bi_direction && (input > 47)) || commutation_interval > 1000) {
                     running = 0;
                 }
                 old_routine = 1;
-                if (zero_crosses > 100) {
-                    average_interval = 5000;
-                }
                 last_duty_cycle = min_startup_duty / 2;
             }
             desync_check = 0;
@@ -2230,10 +2231,10 @@ if(zero_crosses < 5){
         stuckcounter = 0;
         if (stepper_sine == 0) {
 
-            e_rpm = running * (600000 / e_com_time); // in tens of rpm
+            e_rpm = (running && e_com_time > 0) ? (600000 / e_com_time) : 0; // in tens of rpm
             k_erpm = e_rpm / 10; // ecom time is time for one electrical revolution in microseconds
 
-            if (low_rpm_throttle_limit) { // some hardware doesn't need this, its on
+            if (low_rpm_throttle_limit && high_rpm_level > low_rpm_level) { // some hardware doesn't need this, its on
                                           // by default to keep hardware / motors
                                           // protected but can slow down the response
                                           // in the very low end a little.
