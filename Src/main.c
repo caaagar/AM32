@@ -2071,10 +2071,6 @@ if(zero_crosses < 5){
         average_interval = e_com_time / 3;
         if (desync_check && zero_crosses > 10) {
             if ((getAbsDif(last_average_interval, average_interval) > average_interval >> 1) && (average_interval < 2000)) { // throttle resitricted before zc 20.
-                // Preserve the pre-reset zero-cross count for recovery timing.
-                if (zero_crosses > 100) {
-                    average_interval = 5000;
-                }
                 zero_crosses = 0;
                 desync_happened++;
                 if ((!eepromBuffer.bi_direction && (input > 47)) || commutation_interval > 1000) {
