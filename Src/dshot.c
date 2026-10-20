@@ -120,7 +120,7 @@ void computeDshotDMA()
                 }
                 if(programming_mode == 3){
                     if(tocheck == 37){  // commit new values to eeprom. must use save settings to make permanent.
-                    if (position < sizeof(eepromBuffer.buffer) && new_byte <= UINT8_MAX) {
+                    if (position < sizeof(eepromBuffer.buffer)) {
                         eepromBuffer.buffer[position] = new_byte;
                     }
                     programming_mode = 0;
