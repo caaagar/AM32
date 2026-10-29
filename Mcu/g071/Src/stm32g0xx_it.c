@@ -236,6 +236,29 @@ void DMA1_Channel2_3_IRQHandler(void)
  */
 void ADC1_COMP_IRQHandler(void)
 {
+#if AM32_G071_STRICT_ZC_IRQ
+    /* Snapshot before W1C. Never leave an early edge pending: otherwise the
+     * NVIC can repeatedly re-enter and later treat that old edge as a new ZC.
+     */
+    const uint32_t phase_lines = LL_EXTI_LINE_17 | LL_EXTI_LINE_18;
+    const uint32_t pending_rising = EXTI->RPR1 & phase_lines;
+    const uint32_t pending_falling = EXTI->FPR1 & phase_lines;
+    const uint32_t enabled_line = EXTI->IMR1 & current_EXTI_LINE;
+    const uint32_t elapsed = INTERVAL_TIMER->CNT;
+    LL_EXTI_ClearRisingFlag_0_31(pending_rising);
+    LL_EXTI_ClearFallingFlag_0_31(pending_falling);
+
+    /* Comparator polarity is opposite the BEMF 'rising' flag. A pending
+     * inactive or masked line must not schedule a commutation.
+     */
+    const uint32_t expected_edge = rising ? pending_falling : pending_rising;
+    if ((expected_edge & enabled_line) == 0 ||
+        elapsed <= (average_interval >> 1)) {
+        return;
+    }
+    interruptRoutine(); // retains the existing comparator-level filter
+#else
+
   if (LL_EXTI_IsActiveFallingFlag_0_31(LL_EXTI_LINE_18)) {
     if((INTERVAL_TIMER->CNT) > (average_interval >> 1)){
       LL_EXTI_ClearFallingFlag_0_31(LL_EXTI_LINE_18);
@@ -286,6 +309,7 @@ void ADC1_COMP_IRQHandler(void)
     }
     return;
   }
+#endif
 }
 
 /**
@@ -377,3 +401,4 @@ void EXTI4_15_IRQHandler(void)
     LL_EXTI_ClearRisingFlag_0_31(LL_EXTI_LINE_15);
     processDshot();
 }
+
