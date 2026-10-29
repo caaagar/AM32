@@ -1,0 +1,22 @@
+name: G071 zero-cross host regression
+on:
+  push:
+    paths:
+      - 'Mcu/g071/**'
+      - 'Src/main.c'
+      - 'tests/test_g071_zc_irq.py'
+      - '.github/workflows/g071-zc-host-test.yml'
+  pull_request:
+    paths:
+      - 'Mcu/g071/**'
+      - 'Src/main.c'
+      - 'tests/test_g071_zc_irq.py'
+      - '.github/workflows/g071-zc-host-test.yml'
+permissions:
+  contents: read
+jobs:
+  host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/test_g071_zc_irq.py

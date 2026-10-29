@@ -28,7 +28,18 @@ void maskPhaseInterrupts()
 #endif
 }
 
-void enableCompInterrupts() { EXTI->IMR1 |= current_EXTI_LINE; }
+void enableCompInterrupts()
+{
+#if AM32_G071_STRICT_ZC_IRQ
+    /* Discard edges latched during commutation/input switching while masked.
+     * Both lines can belong to the motor on G071 N-variant targets.
+     */
+    const uint32_t phase_lines = LL_EXTI_LINE_17 | LL_EXTI_LINE_18;
+    LL_EXTI_ClearRisingFlag_0_31(phase_lines);
+    LL_EXTI_ClearFallingFlag_0_31(phase_lines);
+#endif
+    EXTI->IMR1 |= current_EXTI_LINE;
+}
 
 static void setCompSpeed(uint32_t mode)
 {
@@ -144,3 +155,4 @@ medium_speed_set = 1;
 
 //	}
 //}
+
